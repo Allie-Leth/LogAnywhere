@@ -20,7 +20,6 @@
 namespace LogAnywhere
 {
     uint64_t sequence = 0; // Strictly increasing log order -- default logging behavior is no timestamp provided
-    uint16_t nextHandlerId = 1; ///< Unique ID for each handler, starting from 1
 
     /**
      * @brief A user-defined log handler function.
@@ -58,8 +57,9 @@ namespace LogAnywhere
     {
     public:
         static constexpr size_t MaxHandlers = 8; ///< Maximum number of registered handlers
+        HandlerEntry handlers[MaxHandlers];        ///< Array of registered handlers
         uint64_t logSequence = 1;                ///< Sequence number for log messages if no timestamp is provided
-
+        uint16_t nextHandlerId = 1;              ///< Unique ID for the next handler
         /**
          * @brief Optional user-supplied timestamp function.
          *
@@ -110,18 +110,11 @@ namespace LogAnywhere
          */
         bool registerHandler(LogLevel level, LogHandler handler, void *context = nullptr, const char *name = nullptr)
         {
-            if (handlerCount >= MaxHandlers)
-                return false;
+            if (handlerCount >= MaxHandlers) return false;
 
-            handlers[handlerCount++] = HandlerEntry{
-                nextHandlerId++, // Assign unique ID
-                name,
-                level,
-                handler,
-                context,
-                nullptr, // tagFilter
-                nullptr  // filterContext
-            };
+
+            handlers[handlerCount++] = HandlerEntry(nextHandlerId++, name, level, handler, context);
+            return true;
 
             return true;
         }
@@ -138,21 +131,26 @@ namespace LogAnywhere
          * @param filterContext  Optional context passed to the filter function
          * @return true if the handler was successfully registered
          */
-        bool registerHandlerFiltered(
+        inline bool registerHandlerFiltered(
             LogLevel level,
             LogHandler handler,
-            void *context,
+            void* context,
             TagFilterFn tagFilter,
-            void *filterContext = nullptr)
-        {
+            const char* name = nullptr,
+            void* filterContext = nullptr
+        ) {
             if (handlerCount >= MaxHandlers)
                 return false;
+
             handlers[handlerCount++] = {
+                static_cast<uint16_t>(handlerCount),
+                name,
                 level,
                 handler,
                 context,
                 tagFilter,
-                filterContext};
+                filterContext
+            };
             return true;
         }
 
