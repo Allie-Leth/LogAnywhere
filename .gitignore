@@ -1,0 +1,52 @@
+# === Build and output ===
+/build/
+/bin/
+/obj/
+/out/
+*.o
+*.obj
+*.elf
+*.hex
+*.map
+*.log
+
+# === VSCode / CMake / CLion ===
+.vscode/
+.idea/
+CMakeFiles/
+CMakeCache.txt
+Makefile
+compile_commands.json
+
+# === Doxygen output ===
+/docs/
+/*.dot
+*.svg
+*.pdf
+*.dox
+
+# === Obsidian vault ===
+.obsidian/
+*.excalidraw
+.excalidraw/
+
+# === System/OS ===
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# === Temporary/Backup ===
+*.swp
+*.bak
+*.tmp
+*.~*
+*.orig
+
+# === Ignore firmware blobs if present ===
+*.bin
+*.uf2
+
+# === Logs ===
+*.log
+*.trace
