@@ -50,3 +50,8 @@ Desktop.ini
 # === Logs ===
 *.log
 *.trace
+
+# === CMake ===
+*.cmake
+CMakeCache.txt
+CMakeLists.txt
