@@ -10,6 +10,7 @@
 
 #include "LogMessage.h"
 #include "LogLevel.h"
+#include "HandlerEntry.h"
 #include <cstdint>
 #include <cstdarg>
 #include <cstdio>
@@ -18,7 +19,8 @@
 
 namespace LogAnywhere
 {
-    uint64_t sequence = 0;  // Strictly increasing log order -- default logging behavior is no timestamp provided
+    uint64_t sequence = 0; // Strictly increasing log order -- default logging behavior is no timestamp provided
+    uint16_t nextHandlerId = 1; ///< Unique ID for each handler, starting from 1
 
     /**
      * @brief A user-defined log handler function.
@@ -56,7 +58,7 @@ namespace LogAnywhere
     {
     public:
         static constexpr size_t MaxHandlers = 8; ///< Maximum number of registered handlers
-        uint64_t logSequence = 1; ///< Sequence number for log messages if no timestamp is provided
+        uint64_t logSequence = 1;                ///< Sequence number for log messages if no timestamp is provided
 
         /**
          * @brief Optional user-supplied timestamp function.
@@ -92,19 +94,6 @@ namespace LogAnywhere
         }
 
         /**
-         * @brief Internal storage for handler configuration.
-         */
-        struct HandlerEntry
-        {
-            LogLevel level;     ///< Minimum severity required to trigger this handler
-            LogHandler handler; ///< Pointer to the user-defined log function
-            void *context;      ///< Optional handler-specific context
-
-            TagFilterFn tagFilter = nullptr; ///< Optional filter function for tag-based routing
-            void *filterContext = nullptr;   ///< Optional context for the tag filter
-        };
-
-        /**
          * @brief Constructs a Logger with no registered handlers.
          */
         Logger() : handlerCount(0) {}
@@ -119,11 +108,21 @@ namespace LogAnywhere
          * @param context   Optional user data passed to the handler
          * @return true if the handler was successfully registered
          */
-        bool registerHandler(LogLevel level, LogHandler handler, void *context = nullptr)
+        bool registerHandler(LogLevel level, LogHandler handler, void *context = nullptr, const char *name = nullptr)
         {
             if (handlerCount >= MaxHandlers)
                 return false;
-            handlers[handlerCount++] = {level, handler, context, nullptr, nullptr};
+
+            handlers[handlerCount++] = HandlerEntry{
+                nextHandlerId++, // Assign unique ID
+                name,
+                level,
+                handler,
+                context,
+                nullptr, // tagFilter
+                nullptr  // filterContext
+            };
+
             return true;
         }
 
