@@ -23,7 +23,7 @@ namespace LogAnywhere {
         DEBUG,      ///< Debugging details useful for developers
         INFO,       ///< General informational messages
         WARN,       ///< Potential issues or recoverable problems
-        ERROR       ///< Serious issues requiring attention
+        ERR       ///< Serious issues requiring attention
     };
 
     /**
@@ -38,7 +38,7 @@ namespace LogAnywhere {
             case LogLevel::DEBUG: return "DEBUG";
             case LogLevel::INFO:  return "INFO";
             case LogLevel::WARN:  return "WARN";
-            case LogLevel::ERROR: return "ERROR";
+            case LogLevel::ERR: return "ERROR";
             default:              return "UNKNOWN";
         }
     }
