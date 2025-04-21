@@ -1,10 +1,10 @@
-# 🛣️ LogAnywhere Project Roadmap
+#  LogAnywhere Project Roadmap
 
 LogAnywhere is a log-agnostic routing layer for embedded and systems-level development. All log destinations (serial, BLE, MQTT, etc.) are built on top of a shared dispatch core with the following priorities:
 
 ---
 
-## 🧼 Platform-Agnostic Design Constraints
+##  Platform-Agnostic Design Constraints
 
 To maximize reusability, the core LogAnywhere implementation avoids:
 - Any dependency on `<Arduino.h>`
@@ -28,6 +28,19 @@ This ensures compatibility with:
 # Roadmap
 ---
 
+## High Priority - Cannot be published until finished
+- [ ] **Implement Error handling in all parts of code**
+- [ ] **Fail-safe behavior for unregistered or invalid handlers**
+- [ ] Finish test cases
+- [ ] Provide more fine-grained control of logging
+- [ ] **Support for deregistering handlers**
+- [ ] Dynamic handler control
+- [ ] **Boundary enforcement on log message content**
+- [ ] **Async logging**
+	- [ ] Thread safety warnings
+- [ ] Default safe log fallback
+- [ ] Time handling edge cases
+- [ ] Implement Logf
 ##   — Metadata Injection & Safety
 
 Enhance logs without tying the logger to any platform.
@@ -36,7 +49,7 @@ Enhance logs without tying the logger to any platform.
   - `void setTimestampSource(std::function<uint64_t()> fn)`
   - This replaces `millis()` entirely
 - [ ] Add optional source tags (filename / function) via macro helpers
-- [x] Decide between `std::string` vs `const char*` as base API (or overload both)
+- [ ] Decide between `std::string` vs `const char*` as base API (or overload both)
 - [x] Create log-level filtering mechanism
 - [x] Handler-level filtering (`only WARN and ERROR`, etc.)
 
