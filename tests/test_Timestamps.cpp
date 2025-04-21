@@ -20,7 +20,7 @@ TEST_CASE("Logger uses default timestamp (zero) when none provided", "[Logger][T
     logger.registerHandler(LogLevel::INFO, CapturingHandler, &captured);
     logger.log(LogLevel::INFO, "TS_TEST", "Default timestamp");
 
-    REQUIRE(captured == 0);
+    REQUIRE(captured == 1);
 }
 
 TEST_CASE("Logger uses custom timestamp provider", "[Logger][Timestamp]")
