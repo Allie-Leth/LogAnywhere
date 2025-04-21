@@ -5,6 +5,7 @@
 #include "../include/Logger.h"
 #include "../include/LogMessage.h"
 #include "../include/LogLevel.h"
+#include "../include/HandlerEntry.h"
 
 #include <string>
 #include <sstream>
@@ -15,6 +16,8 @@
 using namespace LogAnywhere;
 
 TEST_CASE("Logger writes to a std::string stream (simulated Serial)", "[Handler][Serial]") {
+
+    HandlerEntry handlers[512];
     Logger logger;
     std::ostringstream serialStream;
 
