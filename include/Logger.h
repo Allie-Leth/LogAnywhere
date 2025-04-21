@@ -1,4 +1,8 @@
 #pragma once
+#ifndef LOGANYWHERE_MAX_HANDLERS
+#define LOGANYWHERE_MAX_HANDLERS 512
+#endif
+
 
 /**
  * @file Logger.h
@@ -56,8 +60,6 @@ namespace LogAnywhere
     class Logger
     {
     public:
-        static constexpr size_t MaxHandlers = 8; ///< Maximum number of registered handlers
-        HandlerEntry handlers[MaxHandlers];        ///< Array of registered handlers
         uint64_t logSequence = 1;                ///< Sequence number for log messages if no timestamp is provided
         uint16_t nextHandlerId = 1;              ///< Unique ID for the next handler
         /**
@@ -110,7 +112,7 @@ namespace LogAnywhere
          */
         bool registerHandler(LogLevel level, LogHandler handler, void *context = nullptr, const char *name = nullptr)
         {
-            if (handlerCount >= MaxHandlers) return false;
+            if (handlerCount >= LOGANYWHERE_MAX_HANDLERS) return false;
 
 
             handlers[handlerCount++] = HandlerEntry(nextHandlerId++, name, level, handler, context);
@@ -139,7 +141,7 @@ namespace LogAnywhere
             const char* name = nullptr,
             void* filterContext = nullptr
         ) {
-            if (handlerCount >= MaxHandlers)
+            if (handlerCount >= LOGANYWHERE_MAX_HANDLERS)
                 return false;
 
             handlers[handlerCount++] = {
@@ -166,7 +168,15 @@ namespace LogAnywhere
          */
         void log(LogLevel level, const char *tag, const char *message, uint64_t timestamp = 0)
         {
-            uint64_t ts = (timestamp != 0) ? timestamp : (timestampProvider ? timestampProvider() : 0, logSequence++);
+            uint64_t ts = 0;
+                if (timestamp != 0) {
+                    ts = timestamp;
+                } else if (timestampProvider) {
+                    ts = timestampProvider();
+                } else {
+                    ts = logSequence++;
+                }
+
             LogMessage msg{level, tag, message, ts};
 
             for (size_t i = 0; i < handlerCount; ++i)
@@ -246,7 +256,7 @@ namespace LogAnywhere
         }
 
     private:
-        HandlerEntry handlers[MaxHandlers]; ///< Array of registered handlers
+        HandlerEntry handlers[LOGANYWHERE_MAX_HANDLERS]; ///< Array of registered handlers
         size_t handlerCount;                ///< Number of handlers currently registered
         TimestampFn timestampProvider = nullptr;
     };
