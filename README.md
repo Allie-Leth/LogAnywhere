@@ -1,12 +1,12 @@
 # LogAnywhere
 
-**LogAnywhere** is a lightweight, backend-agnostic logging library for embedded C++ development. It focuses on minimalism, clarity, and total decoupling from output protocols. The result is a flexible log router that works across microcontrollers, Linux targets, and constrained environments.
+**LogAnywhere** is a lightweight, backend-agnostic logging library for embedded C++ development. It focuses on minimalism, clarity, and total decoupling from output protocols. The result is a flexible log router that works across microcontrollers, Linux targets, and constrained environments. 
 
 ---
 
 ## Why LogAnywhere Exists
 
-Most embedded systems need logs — but in projects involving **meshes and nested mesh topologies**, traditional logging solutions often fall short. When each device may have different capabilities and constraints (some log to serial, others to MQTT, others buffer or forward), a **single, inflexible logging system doesn’t scale**. After rewriting the same scaffolding over and over for different transports, I built **LogAnywhere** to **separate routing logic from output logic**, allowing flexible, pluggable handlers that can be reused across the entire mesh or mesh-of-meshes with minimal overhead. Built for 
+Most embedded systems need logs — but in projects involving **meshes and nested mesh topologies**, I've found that traditional logging strategies fall short from what I needed. When each device may have different capabilities and constraints - and importantly may need to point to multiple outputs like serial, text file, mqtt, tcp/ip, etc - so a **single, inflexible logging system doesn’t scale**. After rewriting the same scaffolding over and over for different transports, I built **LogAnywhere** to **separate routing logic from output logic**, allowing flexible, pluggable handlers that can be reused across the entire mesh or mesh-of-meshes with minimal overhead. Built for embedded, usable anywhere. 
 
 You define where messages go. LogAnywhere dispatches based on level, tags, and filters. The library itself never assumes transport or formatting — that's entirely up to the developer.
 
@@ -20,24 +20,18 @@ You define where messages go. LogAnywhere dispatches based on level, tags, and f
 - Pluggable handlers via function pointers and context
 - Optional per-handler tag filters
 - Microcontroller-safe 
-- Designed for both synchronous and future async backends
+- Designed for both synchronous and future async backends.
 
 ---
 
 ## Index
 
-This project includes a vault-style documentation layout. Suggested pages:
+This project includes a vault-style documentation layout.
 
-- Overview – core philosophy, quick start
-- Getting Started – minimal setup
-- Handlers – writing and registering outputs
-- Tag Filtering – focused routing
-- Timestamps – default + custom time providers
-- Testing – structure and examples using Catch2
-- Design Notes – architecture and rationale
-- Roadmap – current and planned features
-
-Use the provided `index.html` viewer (Docsify) or open the vault directly in Obsidian.
+- README
+- Roadmap
+- Examples 
+- Documentation -- Doxyfile docs exist, however more Documentation is in the works. 
 
 ---
 
@@ -47,14 +41,12 @@ Use the provided `index.html` viewer (Docsify) or open the vault directly in Obs
 include/
 ├── Logger.h         # Central logger class and handler registration
 ├── HandlerEntry.h   # Metadata for registered outputs
-├── LogLevel.h       # Log severity enum
+├── LogLevel.h       # Log severity enum 
 ├── LogMessage.h     # Message struct (level, tag, text, timestamp)
 ├── LogAnywhere.h    # Umbrella include
 tests/
-├── test_Logger.cpp
-├── test_LogMessage.cpp
-├── test_Handlers.cpp
-├── test_Timestamps.cpp
+├── test Files
+
 build/               # CMake build output
 README/              # Obsidian vault for structured docs
 ```
@@ -74,6 +66,8 @@ auto SerialHandler = [](const LogMessage& msg, void* ctx) {
 logger.registerHandler(LogLevel::INFO, SerialHandler, &std::cout);
 logger.log(LogLevel::INFO, "SYSTEM", "Startup complete.");
 ```
+
+See more examples in the docs.
 
 ---
 
@@ -97,13 +91,14 @@ This gives you access to:
 
 You can drop the entire `include/` folder into your project if desired.
 
+Project will eventually be posted to platformio's library.
 ---
 
 ## Running Tests (Optional)
 
 Test binaries are provided via CMake + Catch2.
 
-Only needed if you're contributing or modifying internals.
+These are not needed, but if you desired to see my testing, here are the steps to build:
 
 ### 1. Configure
 
@@ -129,14 +124,8 @@ for t in ./build/test_*; do echo "Running $t"; "$t"; done
 
 The `README/` folder includes developer notes and guides in Obsidian-compatible markdown.
 
-### Option 1: Open in Obsidian
-
-- Open Obsidian → “Open Folder as Vault” → select `README/`
-
-### Option 2: Open in Browser
-
-- Use `README/index.html` to view docs in any web browser (Docsify)
-
+### Option 1: Obsidian
+Simply open the LogAnwhere folder in Obsidian.
 ---
 
 ## Project Philosophy
@@ -145,6 +134,7 @@ The `README/` folder includes developer notes and guides in Obsidian-compatible 
 - No globals: instantiate loggers as needed
 - No STL dependency unless you use it in your handlers
 - No need to build or install — just include and use
+- Logging is a core functionality of embedded, that's their whole goal - this helps centralize that to do what you need.
 
 
 ---
@@ -197,5 +187,6 @@ This project is maintained by a single developer for use across embedded and per
 - Real-world constraints of microcontrollers
 - A preference for portable, testable, and pluggable software
 - An emphasis on design clarity and low-overhead reuse
+- Frustration at having to build a log handler for every mesh project. 
 
-If you're reviewing this as part of a hiring, demo, or collaboration context, feel free to explore the examples, test coverage, and documentation vault for a deeper understanding of the approach and architecture.
+If you're reviewing this as part of a hiring - the majority of my code goes to my private gitlab instance for privacy reasons. What's listed here is purely for 
