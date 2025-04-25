@@ -148,7 +148,7 @@ Simply open the LogAnwhere folder in Obsidian.
 | Timestamp hooks   | Custom provider support                        | ✅ Complete     |
 | Async support     | Buffer or deferred logging                     | Planned        |
 | Built-in backends | Optional serial/MQTT handlers                  | Planned        |
-| Log ordering      | Monotonic fallback when time is unavailable    | ✅ Complete     |
+| Log ordering      | Sequential fallback when time is unavailable   | ✅ Complete     |
 | Tests             | Full Catch2 coverage                           | In Progress     |
 | Docsify Vault     | Markdown documentation via local viewer        | ✅ Available    |
 
