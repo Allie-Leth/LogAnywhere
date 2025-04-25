@@ -118,7 +118,67 @@ namespace LogAnywhere
             handlers[handlerCount++] = HandlerEntry(nextHandlerId++, name, level, handler, context);
             return true;
 
-            return true;
+        }
+
+        /**
+         * @brief Unregisters a handler by its unique ID.
+         * 
+         * Unregisters a handler by its unique ID. This ID is assigned when the handler is registered.
+         * 
+         * @param id The unique ID of the handler to unregister
+         * @return true if the handler was successfully unregistered
+         * @return false if the handler with the given ID was not found
+         * @note This function shifts the remaining handlers down in the array to fill the gap.
+         *      This is an O(n) operation, so use with caution in performance-critical paths.
+         */
+        bool unregisterHandlerByID(uint16_t id)
+        {
+            for (size_t i = 0; i < handlerCount; ++i)
+            {
+                if (handlers[i].id == id)
+                {
+                    // Shift remaining handlers down
+                    for (size_t j = i; j < handlerCount - 1; ++j)
+                    {
+                        handlers[j] = handlers[j + 1];
+                    }
+                    --handlerCount;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /**
+         * @brief Unregisters a handler by its name.
+         *
+         * Unregisters a handler by name. 
+         *
+         * @param name The name of the handler to unregister
+         * @return true if the handler was successfully unregistered
+         * @return false if the handler with the given name was not found
+         * 
+         * @note This function shifts the remaining handlers down in the array to fill the gap.
+         *      This is an O(n) operation, so use with caution in performance-critical paths.
+         * 
+         */
+
+        bool unregisterHandlerByName(const char *name)
+        {
+            for (size_t i = 0; i < handlerCount; ++i)
+            {
+                if (strcmp(handlers[i].name, name) == 0)
+                {
+                    // Shift remaining handlers down
+                    for (size_t j = i; j < handlerCount - 1; ++j)
+                    {
+                        handlers[j] = handlers[j + 1];
+                    }
+                    --handlerCount;
+                    return true;
+                }
+            }
+            return false;
         }
 
         /**
