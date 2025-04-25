@@ -1,33 +1,27 @@
 #define CATCH_CONFIG_MAIN
 #include "catch.hpp"
 
-
-#include "../include/Logger.h"
-#include "../include/LogMessage.h"
-#include "../include/LogLevel.h"
-#include "../include/HandlerEntry.h"
+#include "../include/LogAnywhere.h"
 
 #include <string>
 #include <sstream>
 #include <fstream>
 #include <vector>
-#include <iostream> // Include for std::cerr
+#include <iostream> // for std::cerr
 
 using namespace LogAnywhere;
 
-TEST_CASE("Logger writes to a std::string stream (simulated Serial)", "[Handler][Serial]") {
-
-    HandlerEntry handlers[512];
-    Logger logger;
+TEST_CASE("Logger writes to a std::ostringstream (simulated Serial)", "[Handler][Serial]") {
     std::ostringstream serialStream;
 
-    auto SerialHandler = [](const LogMessage& msg, void* ctx) {
+    auto serialHandler = [](const LogMessage& msg, void* ctx) {
         auto& out = *static_cast<std::ostringstream*>(ctx);
         out << "[" << toString(msg.level) << "] " << msg.tag << ": " << msg.message << "\n";
     };
 
-    logger.registerHandler(LogLevel::INFO, SerialHandler, &serialStream);
-    logger.log(LogLevel::INFO, "SERIAL", "Logged to stream");
+    REQUIRE(registerHandler(LogLevel::INFO, serialHandler, &serialStream));
+
+    log(LogLevel::INFO, "SERIAL", "Logged to stream");
 
     std::string output = serialStream.str();
     REQUIRE(output.find("Logged to stream") != std::string::npos);
@@ -35,23 +29,18 @@ TEST_CASE("Logger writes to a std::string stream (simulated Serial)", "[Handler]
 }
 
 TEST_CASE("Logger writes to a file", "[Handler][File]") {
-    Logger logger;
     const std::string filename = "test_file_output.log";
-
     std::ofstream fileOut(filename);
-    std::cerr << "Opening file: " << filename << std::endl;
-    std::cerr << "File is open: " << fileOut.is_open() << std::endl;
-
     REQUIRE(fileOut.is_open());
 
-auto FileHandler = [](const LogMessage& msg, void* ctx) {
-    auto* file = static_cast<std::ofstream*>(ctx);
-    std::cerr << "Writing to file from handler: " << msg.message << std::endl;
-    *file << "[" << toString(msg.level) << "] " << msg.tag << ": " << msg.message << "\n";
-};
+    auto fileHandler = [](const LogMessage& msg, void* ctx) {
+        auto* file = static_cast<std::ofstream*>(ctx);
+        *file << "[" << toString(msg.level) << "] " << msg.tag << ": " << msg.message << "\n";
+    };
 
-    logger.registerHandler(LogLevel::INFO, FileHandler, &fileOut);
-    logger.log(LogLevel::INFO, "FILE", "Writing to file");
+    REQUIRE(registerHandler(LogLevel::INFO, fileHandler, &fileOut));
+
+    log(LogLevel::INFO, "FILE", "Writing to file");
     fileOut.close();
 
     std::ifstream fileIn(filename);
@@ -60,100 +49,85 @@ auto FileHandler = [](const LogMessage& msg, void* ctx) {
     fileIn.close();
 
     REQUIRE(line.find("Writing to file") != std::string::npos);
-
-    // ✅ Cleanup: Delete the test file
-    REQUIRE(std::remove(filename.c_str()) == 0);  // 0 = success
+    REQUIRE(std::remove(filename.c_str()) == 0); // ✅ Cleanup
 }
 
-
 TEST_CASE("Logger queues logs into a vector (simulated async/memory buffer)", "[Handler][Async]") {
-    Logger logger;
     std::vector<std::string> messageQueue;
 
-    auto QueueHandler = [](const LogMessage& msg, void* ctx) {
+    auto queueHandler = [](const LogMessage& msg, void* ctx) {
         auto* queue = static_cast<std::vector<std::string>*>(ctx);
         queue->push_back(std::string(msg.tag) + ": " + msg.message);
     };
 
-    logger.registerHandler(LogLevel::DEBUG, QueueHandler, &messageQueue);
+    REQUIRE(registerHandler(LogLevel::DEBUG, queueHandler, &messageQueue));
 
-    logger.log(LogLevel::DEBUG, "ASYNC", "Queued 1");
-    logger.log(LogLevel::INFO, "ASYNC", "Queued 2");
+    log(LogLevel::DEBUG, "ASYNC", "Queued 1");
+    log(LogLevel::INFO, "ASYNC", "Queued 2");
 
     REQUIRE(messageQueue.size() == 2);
     REQUIRE(messageQueue[0] == "ASYNC: Queued 1");
     REQUIRE(messageQueue[1] == "ASYNC: Queued 2");
 }
 
-TEST_CASE("Logger sends to multiple handlers", "[Logger][Handlers][Multiple]") {
-    Logger logger;
-
+TEST_CASE("Logger sends logs to multiple handlers", "[Logger][Handlers][Multiple]") {
     const std::string filename = "test_multi_output.log";
     std::ofstream fileOut(filename);
     std::ostringstream serialOut;
 
-    // File handler
-    auto FileHandler = [](const LogMessage& msg, void* ctx) {
+    auto fileHandler = [](const LogMessage& msg, void* ctx) {
         auto* file = static_cast<std::ofstream*>(ctx);
         *file << "[" << toString(msg.level) << "] " << msg.tag << ": " << msg.message << "\n";
-        file->flush();
     };
 
-    // Serial handler
-    auto SerialHandler = [](const LogMessage& msg, void* ctx) {
+    auto serialHandler = [](const LogMessage& msg, void* ctx) {
         auto* stream = static_cast<std::ostringstream*>(ctx);
         *stream << "[" << toString(msg.level) << "] " << msg.tag << ": " << msg.message << "\n";
     };
 
-    REQUIRE(logger.registerHandler(LogLevel::INFO, FileHandler, &fileOut));
-    REQUIRE(logger.registerHandler(LogLevel::INFO, SerialHandler, &serialOut));
+    REQUIRE(registerHandler(LogLevel::INFO, fileHandler, &fileOut));
+    REQUIRE(registerHandler(LogLevel::INFO, serialHandler, &serialOut));
 
-    logger.log(LogLevel::INFO, "TEST", "This should go to both");
+    log(LogLevel::INFO, "TEST", "This should go to both");
 
     fileOut.close();
 
-    // Check file
     std::ifstream fileIn(filename);
     std::string fileLine;
     std::getline(fileIn, fileLine);
     fileIn.close();
 
-    // Check serial
     std::string serialLine = serialOut.str();
 
     REQUIRE(fileLine.find("This should go to both") != std::string::npos);
     REQUIRE(serialLine.find("This should go to both") != std::string::npos);
 
-    std::remove(filename.c_str()); // Clean up
+    REQUIRE(std::remove(filename.c_str()) == 0); // ✅ Cleanup
 }
 
-TEST_CASE("Logger tag filter prevents one handler", "[Logger][Handlers][Filter]") {
-    Logger logger;
-
+TEST_CASE("Tag filter prevents handler from receiving unmatched logs", "[Logger][Handlers][Filter]") {
     const std::string filename = "test_tag_filter_output.log";
     std::ofstream fileOut(filename);
     std::ostringstream serialOut;
 
-    // Only allow logs with tag "MATCH"
-    auto TagFilter = [](const char* tag, void*) -> bool {
+    auto tagFilter = [](const char* tag, void*) -> bool {
         return std::string(tag) == "MATCH";
     };
 
-    auto FileHandler = [](const LogMessage& msg, void* ctx) {
+    auto fileHandler = [](const LogMessage& msg, void* ctx) {
         auto* file = static_cast<std::ofstream*>(ctx);
         *file << "[" << toString(msg.level) << "] " << msg.tag << ": " << msg.message << "\n";
-        file->flush();
     };
 
-    auto SerialHandler = [](const LogMessage& msg, void* ctx) {
+    auto serialHandler = [](const LogMessage& msg, void* ctx) {
         auto* stream = static_cast<std::ostringstream*>(ctx);
         *stream << "[" << toString(msg.level) << "] " << msg.tag << ": " << msg.message << "\n";
     };
 
-    REQUIRE(logger.registerHandlerFiltered(LogLevel::INFO, FileHandler, &fileOut, TagFilter));
-    REQUIRE(logger.registerHandler(LogLevel::INFO, SerialHandler, &serialOut));
+    REQUIRE(registerHandler(LogLevel::INFO, fileHandler, &fileOut, tagFilter));
+    REQUIRE(registerHandler(LogLevel::INFO, serialHandler, &serialOut));
 
-    logger.log(LogLevel::INFO, "NO_MATCH", "Should only go to serial");
+    log(LogLevel::INFO, "NO_MATCH", "This should only go to serial");
 
     fileOut.close();
 
@@ -164,8 +138,149 @@ TEST_CASE("Logger tag filter prevents one handler", "[Logger][Handlers][Filter]"
 
     std::string serialLine = serialOut.str();
 
-    REQUIRE(fileLine.empty()); // filtered out
-    REQUIRE(serialLine.find("Should only go to serial") != std::string::npos);
+    REQUIRE(fileLine.empty()); // File handler filtered out
+    REQUIRE(serialLine.find("This should only go to serial") != std::string::npos);
 
-    std::remove(filename.c_str()); // Clean up
+    REQUIRE(std::remove(filename.c_str()) == 0); // ✅ Cleanup
+}
+
+TEST_CASE("Handler registration and unregistration by ID", "[Handler][Register]") {
+    std::ostringstream dummyStream;
+
+    auto dummyHandler = [](const LogMessage& msg, void* ctx) {
+        auto* stream = static_cast<std::ostringstream*>(ctx);
+        *stream << msg.message;
+    };
+
+    // Register a handler
+    REQUIRE(registerHandler(LogLevel::INFO, dummyHandler, &dummyStream, nullptr, "DummyHandler"));
+
+    // Manually grab the list and check that the handler was registered
+    size_t count = 0;
+    const HandlerEntry* handlers = LogAnywhere::handlerManager.listHandlers(count);
+    REQUIRE(count >= 1);
+
+    uint16_t id = handlers[count - 1].id; // Get the last registered ID
+
+    // Unregister the handler by ID
+    REQUIRE(unregisterHandlerByID(id));
+
+    // Check that handler count decreased
+    size_t newCount = 0;
+    LogAnywhere::handlerManager.listHandlers(newCount);
+    REQUIRE(newCount == count - 1);
+}
+
+TEST_CASE("Handler registration and unregistration by Name", "[Handler][Register][Name]") {
+    std::ostringstream dummyStream;
+
+    auto dummyHandler = [](const LogMessage& msg, void* ctx) {
+        auto* stream = static_cast<std::ostringstream*>(ctx);
+        *stream << msg.message;
+    };
+
+    const char* handlerName = "NamedHandler";
+
+    // Register a handler with a name
+    REQUIRE(registerHandler(LogLevel::DEBUG, dummyHandler, &dummyStream, nullptr, handlerName));
+
+    // Unregister it by name
+    REQUIRE(unregisterHandlerByName(handlerName));
+
+    // Confirm no handler with that name remains
+    size_t count = 0;
+    const HandlerEntry* handlers = LogAnywhere::handlerManager.listHandlers(count);
+    for (size_t i = 0; i < count; ++i)
+    {
+        if (handlers[i].name)
+        {
+            REQUIRE(std::string(handlers[i].name) != handlerName);
+        }
+    }
+}
+
+TEST_CASE("Handler listing after registration", "[Handler][List]") {
+    std::ostringstream dummyStream;
+
+    auto dummyHandler = [](const LogMessage& msg, void* ctx) {
+        auto* stream = static_cast<std::ostringstream*>(ctx);
+        *stream << msg.message;
+    };
+
+    // Count current handlers
+    size_t originalCount = 0;
+    LogAnywhere::handlerManager.listHandlers(originalCount);
+
+    // Register a new one
+    REQUIRE(registerHandler(LogLevel::WARN, dummyHandler, &dummyStream, nullptr, "ListTestHandler"));
+
+    // Check new count
+    size_t newCount = 0;
+    const HandlerEntry* handlers = LogAnywhere::handlerManager.listHandlers(newCount);
+
+    REQUIRE(newCount == originalCount + 1);
+
+    // Confirm last handler matches what we added
+    REQUIRE(handlers[newCount - 1].name != nullptr);
+    REQUIRE(std::string(handlers[newCount - 1].name) == "ListTestHandler");
+}
+
+TEST_CASE("Handler lookup by ID", "[Handler][Find][ID]") {
+    std::ostringstream dummyStream;
+
+    auto dummyHandler = [](const LogMessage& msg, void* ctx) {
+        auto* stream = static_cast<std::ostringstream*>(ctx);
+        *stream << msg.message;
+    };
+
+    // Register a new handler
+    REQUIRE(registerHandler(LogLevel::ERR, dummyHandler, &dummyStream, nullptr, "IDLookupHandler"));
+
+    size_t count = 0;
+    const HandlerEntry* handlers = LogAnywhere::handlerManager.listHandlers(count);
+    REQUIRE(count > 0);
+
+    uint16_t targetID = handlers[count - 1].id;
+
+    // Manually search by ID
+    bool found = false;
+    for (size_t i = 0; i < count; ++i) {
+        if (handlers[i].id == targetID) {
+            found = true;
+            REQUIRE(std::string(handlers[i].name) == "IDLookupHandler");
+            break;
+        }
+    }
+
+    REQUIRE(found);
+}
+
+TEST_CASE("Handler lookup by name", "[Handler][Find][Name]") {
+    std::ostringstream dummyStream;
+
+    auto dummyHandler = [](const LogMessage& msg, void* ctx) {
+        auto* stream = static_cast<std::ostringstream*>(ctx);
+        *stream << msg.message;
+    };
+
+    const char* targetName = "NameLookupHandler";
+
+    // Register a new handler
+    REQUIRE(registerHandler(LogLevel::DEBUG, dummyHandler, &dummyStream, nullptr, targetName));
+
+    size_t count = 0;
+    const HandlerEntry* handlers = LogAnywhere::handlerManager.listHandlers(count);
+    REQUIRE(count > 0);
+
+    // Manually search by name
+    bool found = false;
+    for (size_t i = 0; i < count; ++i) {
+        if (handlers[i].name && std::string(handlers[i].name) == targetName) {
+            found = true;
+            REQUIRE(handlers[i].handler != nullptr);
+            break;
+        }
+    }
+
+    REQUIRE(found);
 }

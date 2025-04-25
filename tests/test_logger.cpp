@@ -1,51 +1,52 @@
 #define CATCH_CONFIG_MAIN
 #include "catch.hpp"
 
-
-#include "../include/Logger.h"
-#include "../include/LogLevel.h"
-#include "../include/LogMessage.h"
+#include "../include/LogAnywhere.h"
 
 using namespace LogAnywhere;
 
 static std::string lastOutput;
+
 void TestHandler(const LogMessage& msg, void* ctx) {
     lastOutput = std::string("[") + toString(msg.level) + "] " + msg.tag + ": " + msg.message;
 }
 
-TEST_CASE("Logger dispatches messages to registered handlers", "[logger]") {
-    Logger logger;
+TEST_CASE("Logger dispatches messages to registered handlers", "[Logger][BasicDispatch]") 
+{
     lastOutput.clear();
 
-    logger.registerHandler(LogLevel::INFO, TestHandler);
-    logger.log(LogLevel::INFO, "CORE", "System started");
+    REQUIRE(registerHandler(LogLevel::INFO, TestHandler, nullptr, nullptr, "BasicDispatchHandler"));
+
+    log(LogLevel::INFO, "CORE", "System started");
 
     REQUIRE(!lastOutput.empty());
     REQUIRE(lastOutput.find("System started") != std::string::npos);
 }
 
-TEST_CASE("Logger filters by log level", "[logger]") {
-    Logger logger;
+TEST_CASE("Logger filters by minimum log level", "[Logger][Filter][Level]") 
+{
     lastOutput.clear();
 
-    logger.registerHandler(LogLevel::ERR, TestHandler);
-    logger.log(LogLevel::INFO, "CORE", "Ignored message");
+    REQUIRE(registerHandler(LogLevel::ERR, TestHandler, nullptr, nullptr, "LevelFilterHandler"));
 
-    REQUIRE(lastOutput.empty());
+    log(LogLevel::INFO, "CORE", "Ignored message");
+
+    REQUIRE(lastOutput.empty()); // INFO < ERR, so should not log
 }
 
-TEST_CASE("Logger supports tag filtering", "[logger]") {
-    Logger logger;
+TEST_CASE("Logger supports tag filtering during dispatch", "[Logger][Filter][Tag]") 
+{
     lastOutput.clear();
 
     auto onlyOTA = [](const char* tag, void*) -> bool {
         return strcmp(tag, "OTA") == 0;
     };
 
-    logger.registerHandlerFiltered(LogLevel::INFO, TestHandler, nullptr, onlyOTA);
-    logger.log(LogLevel::INFO, "BOOT", "Not OTA");
+    REQUIRE(registerHandler(LogLevel::INFO, TestHandler, nullptr, onlyOTA, "TagFilterHandler"));
+
+    log(LogLevel::INFO, "BOOT", "Not OTA"); // Should be filtered out
     REQUIRE(lastOutput.empty());
 
-    logger.log(LogLevel::INFO, "OTA", "Firmware update started");
+    log(LogLevel::INFO, "OTA", "Firmware update started"); // Should pass
     REQUIRE(lastOutput.find("Firmware update started") != std::string::npos);
 }

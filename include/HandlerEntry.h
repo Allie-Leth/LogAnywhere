@@ -47,4 +47,6 @@ namespace LogAnywhere {
               filterContext(filterContext) {}
     };
 
+    
+
 } // namespace LogAnywhere
