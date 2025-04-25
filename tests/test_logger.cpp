@@ -11,42 +11,59 @@ void TestHandler(const LogMessage& msg, void* ctx) {
     lastOutput = std::string("[") + toString(msg.level) + "] " + msg.tag + ": " + msg.message;
 }
 
-TEST_CASE("Logger dispatches messages to registered handlers", "[Logger][BasicDispatch]") 
-{
-    lastOutput.clear();
+TEST_CASE("Logger dispatches messages to registered handlers", "[Logger]") {
+    HandlerManager manager;
+    Logger logger(&manager);
 
-    REQUIRE(registerHandler(LogLevel::INFO, TestHandler, nullptr, nullptr, "BasicDispatchHandler"));
+    std::string lastOutput;
+    auto TestHandler = [](const LogMessage& msg, void* ctx) {
+        *static_cast<std::string*>(ctx) = "[" + std::string(toString(msg.level)) + "] " + msg.tag + ": " + msg.message;
+    };
 
-    log(LogLevel::INFO, "CORE", "System started");
+    manager.registerHandler(LogLevel::INFO, TestHandler, &lastOutput, nullptr, "DispatchTest");
 
-    REQUIRE(!lastOutput.empty());
+    logger.log(LogLevel::INFO, "CORE", "System started");
+
+    REQUIRE_FALSE(lastOutput.empty());
     REQUIRE(lastOutput.find("System started") != std::string::npos);
 }
 
-TEST_CASE("Logger filters by minimum log level", "[Logger][Filter][Level]") 
-{
-    lastOutput.clear();
 
-    REQUIRE(registerHandler(LogLevel::ERR, TestHandler, nullptr, nullptr, "LevelFilterHandler"));
+TEST_CASE("Logger filters by minimum log level", "[Logger][Filter][Level]") {
+    HandlerManager manager;
+    Logger logger(&manager);
 
-    log(LogLevel::INFO, "CORE", "Ignored message");
+    std::string lastOutput;
+    auto TestHandler = [](const LogMessage& msg, void* ctx) {
+        *static_cast<std::string*>(ctx) = "[" + std::string(toString(msg.level)) + "] " + msg.tag + ": " + msg.message;
+    };
 
-    REQUIRE(lastOutput.empty()); // INFO < ERR, so should not log
+    manager.registerHandler(LogLevel::ERR, TestHandler, &lastOutput, nullptr, "LevelFilterTest");
+
+    logger.log(LogLevel::INFO, "CORE", "Ignored message");
+
+    REQUIRE(lastOutput.empty()); // Should not log
 }
 
-TEST_CASE("Logger supports tag filtering during dispatch", "[Logger][Filter][Tag]") 
-{
-    lastOutput.clear();
+
+TEST_CASE("Logger supports tag filtering during dispatch", "[Logger][Filter][Tag]") {
+    HandlerManager manager;
+    Logger logger(&manager);
+
+    std::string lastOutput;
+    auto TestHandler = [](const LogMessage& msg, void* ctx) {
+        *static_cast<std::string*>(ctx) = "[" + std::string(toString(msg.level)) + "] " + msg.tag + ": " + msg.message;
+    };
 
     auto onlyOTA = [](const char* tag, void*) -> bool {
         return strcmp(tag, "OTA") == 0;
     };
 
-    REQUIRE(registerHandler(LogLevel::INFO, TestHandler, nullptr, onlyOTA, "TagFilterHandler"));
+    manager.registerHandler(LogLevel::INFO, TestHandler, &lastOutput, onlyOTA, "TagFilterTest");
 
-    log(LogLevel::INFO, "BOOT", "Not OTA"); // Should be filtered out
+    logger.log(LogLevel::INFO, "BOOT", "Not OTA");
     REQUIRE(lastOutput.empty());
 
-    log(LogLevel::INFO, "OTA", "Firmware update started"); // Should pass
+    logger.log(LogLevel::INFO, "OTA", "Firmware update started");
     REQUIRE(lastOutput.find("Firmware update started") != std::string::npos);
 }

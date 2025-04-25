@@ -354,10 +354,6 @@ int main() {
 ```c++
 [1745201789334567] INFO - RTC: Synchronized with system clock
 ```
-### Sequence Number as Fallback
-
-- Explain `logSequence++` behavior when no timestamp is available
-- Maintains log order even on platforms without real time
 
 ---
 
