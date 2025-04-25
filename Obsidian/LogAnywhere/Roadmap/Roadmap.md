@@ -31,6 +31,7 @@ This ensures compatibility with:
 ## High Priority - Cannot be published until finished
 - [ ] **Implement Error handling in all parts of code**
 - [ ] **Fail-safe behavior for unregistered or invalid handlers**
+- [X] Split Logger and Handler management
 - [ ] Finish test cases
 - [ ] Provide more fine-grained control of logging
 - [ ] **Support for deregistering handlers**

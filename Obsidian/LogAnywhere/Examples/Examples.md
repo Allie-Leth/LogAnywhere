@@ -15,17 +15,19 @@ This section contains practical usage examples for integrating and extending the
 using namespace LogAnywhere;
 
 int main() {
-    Logger logger;
-
-    auto ConsoleHandler = [](const LogMessage& msg, void* ctx) {
+    auto consoleHandler = [](const LogMessage& msg, void* ctx) {
         auto* out = static_cast<std::ostream*>(ctx);
         *out << "[" << toString(msg.level) << "] "
              << msg.tag << ": " << msg.message << "\n";
     };
 
-    logger.registerHandler(LogLevel::INFO, ConsoleHandler, &std::cout);
-    logger.log(LogLevel::INFO, "MAIN", "System initialized");
+    // Register console handler
+    registerHandler(LogLevel::INFO, consoleHandler, &std::cout);
+
+    // Send a basic log
+    log(LogLevel::INFO, "MAIN", "System initialized");
 }
+
 ``
 - Register a basic handler (e.g., `std::cout`, Serial)
 - Make a simple `log()` call
@@ -65,23 +67,21 @@ int main() {
 using namespace LogAnywhere;
 
 int main() {
-    Logger logger;
-
-    auto ConsoleHandler = [](const LogMessage& msg, void* ctx) {
+    auto consoleHandler = [](const LogMessage& msg, void* ctx) {
         auto* out = static_cast<std::ostream*>(ctx);
         *out << "[" << toString(msg.level) << "] "
              << msg.tag << ": " << msg.message << "\n";
     };
 
-    // This handler only receives WARN and above
-    logger.registerHandler(LogLevel::WARN, ConsoleHandler, &std::cout);
+    registerHandler(LogLevel::WARN, consoleHandler, &std::cout);
 
-    logger.log(LogLevel::TRACE, "TEST", "Trace message");   // Ignored
-    logger.log(LogLevel::DEBUG, "TEST", "Debug message");   // Ignored
-    logger.log(LogLevel::INFO,  "TEST", "Info message");    // Ignored
-    logger.log(LogLevel::WARN,  "TEST", "Warn message");    // Printed
-    logger.log(LogLevel::ERR,   "TEST", "Error message");   // Printed
+    log(LogLevel::TRACE, "TEST", "Trace message");   // Ignored
+    log(LogLevel::DEBUG, "TEST", "Debug message");   // Ignored
+    log(LogLevel::INFO,  "TEST", "Info message");    // Ignored
+    log(LogLevel::WARN,  "TEST", "Warn message");    // Printed
+    log(LogLevel::ERR,   "TEST", "Error message");   // Printed
 }
+
 
 ```
 
@@ -96,36 +96,32 @@ int main() {
 using namespace LogAnywhere;
 
 int main() {
-    Logger logger;
-
     std::ostringstream mqttStream;
     std::ostringstream serialStream;
 
-    auto MqttHandler = [](const LogMessage& msg, void* ctx) {
+    auto mqttHandler = [](const LogMessage& msg, void* ctx) {
         auto* out = static_cast<std::ostringstream*>(ctx);
         *out << "[MQTT] " << toString(msg.level) << " - "
              << msg.tag << ": " << msg.message << "\n";
     };
 
-    auto SerialHandler = [](const LogMessage& msg, void* ctx) {
+    auto serialHandler = [](const LogMessage& msg, void* ctx) {
         auto* out = static_cast<std::ostringstream*>(ctx);
         *out << "[SERIAL] " << toString(msg.level) << " - "
              << msg.tag << ": " << msg.message << "\n";
     };
 
-    // MQTT gets INFO and up
-    logger.registerHandler(LogLevel::INFO, MqttHandler, &mqttStream);
+    registerHandler(LogLevel::INFO, mqttHandler, &mqttStream);
+    registerHandler(LogLevel::ERR, serialHandler, &serialStream);
 
-    // Serial only gets ERR
-    logger.registerHandler(LogLevel::ERR, SerialHandler, &serialStream);
-
-    logger.log(LogLevel::DEBUG, "NET", "Network check");        // Ignored by both
-    logger.log(LogLevel::INFO,  "NET", "Ping successful");      // MQTT only
-    logger.log(LogLevel::ERR,   "NET", "Failed to reach server"); // Both MQTT and Serial
+    log(LogLevel::DEBUG, "NET", "Network check");          // Ignored by both
+    log(LogLevel::INFO,  "NET", "Ping successful");        // MQTT only
+    log(LogLevel::ERR,   "NET", "Failed to reach server"); // Both
 
     std::cout << "=== MQTT Output ===\n" << mqttStream.str();
     std::cout << "=== Serial Output ===\n" << serialStream.str();
 }
+
 
 ```
 ---
@@ -142,39 +138,36 @@ int main() {
 using namespace LogAnywhere;
 
 int main() {
-    Logger logger;
-
     std::ostringstream filteredStream;
     std::ostringstream unfilteredStream;
 
-    // Handler that only logs messages tagged "SENSOR"
-    auto TagFilter = [](const char* tag, void*) -> bool {
+    auto tagFilter = [](const char* tag, void*) -> bool {
         return std::string(tag) == "SENSOR";
     };
 
-    auto FilteredHandler = [](const LogMessage& msg, void* ctx) {
+    auto filteredHandler = [](const LogMessage& msg, void* ctx) {
         auto* out = static_cast<std::ostringstream*>(ctx);
         *out << "[FILTERED] " << toString(msg.level) << " - "
              << msg.tag << ": " << msg.message << "\n";
     };
 
-    auto UnfilteredHandler = [](const LogMessage& msg, void* ctx) {
+    auto unfilteredHandler = [](const LogMessage& msg, void* ctx) {
         auto* out = static_cast<std::ostringstream*>(ctx);
         *out << "[RAW] " << toString(msg.level) << " - "
              << msg.tag << ": " << msg.message << "\n";
     };
 
-    logger.registerHandlerFiltered(LogLevel::INFO, FilteredHandler, &filteredStream, TagFilter);
-    logger.registerHandler(LogLevel::INFO, UnfilteredHandler, &unfilteredStream);
+    registerHandler(LogLevel::INFO, filteredHandler, &filteredStream, tagFilter);
+    registerHandler(LogLevel::INFO, unfilteredHandler, &unfilteredStream);
 
-    // Simulate various sources
-    logger.log(LogLevel::INFO, "SENSOR", "Temperature: 22.5C");
-    logger.log(LogLevel::INFO, "CORE",   "System ready");
-    logger.log(LogLevel::INFO, "SENSOR", "Humidity: 48%");
+    log(LogLevel::INFO, "SENSOR", "Temperature: 22.5C");
+    log(LogLevel::INFO, "CORE", "System ready");
+    log(LogLevel::INFO, "SENSOR", "Humidity: 48%");
 
     std::cout << "=== Filtered Output (Only SENSOR) ===\n" << filteredStream.str();
     std::cout << "=== Unfiltered Output (All INFO+) ===\n" << unfilteredStream.str();
 }
+
 
 ```
 
@@ -287,7 +280,42 @@ int main() {
 
 ## Time and Order
 
-### Using Default Timestamp (monotonic fallback)
+### Using Default Timestamp (Sequential counter fallback)
+```C++
+#include "LogAnywhere.h"
+#include <iostream>
+#include <sstream>
+
+using namespace LogAnywhere;
+
+int main() {
+    std::ostringstream out;
+
+    auto simpleHandler = [](const LogMessage& msg, void* ctx) {
+        auto* stream = static_cast<std::ostringstream*>(ctx);
+        *stream << "[" << msg.timestamp << "] "
+                << toString(msg.level) << " - "
+                << msg.tag << ": " << msg.message << "\n";
+    };
+
+    registerHandler(LogLevel::INFO, simpleHandler, &out);
+
+    log(LogLevel::INFO, "BOOT", "Logger starting up");
+    log(LogLevel::INFO, "BOOT", "Initialization complete");
+
+    std::cout << out.str();
+}
+
+
+```
+
+#### 
+```C++
+[1] INFO - BOOT: Logger starting up
+[2] INFO - BOOT: Initialization complete
+```
+### Providing a Custom Timestamp Function
+
 ```C++
 #include "LogAnywhere.h"
 #include <iostream>
@@ -297,9 +325,8 @@ int main() {
 using namespace LogAnywhere;
 
 int main() {
-    Logger logger;
+    std::ostringstream out;
 
-    // Provide a timestamp function based on system time
     auto systemClockTime = []() -> uint64_t {
         using namespace std::chrono;
         return duration_cast<microseconds>(
@@ -309,7 +336,6 @@ int main() {
 
     logger.setTimestampProvider(systemClockTime);
 
-    std::ostringstream out;
     auto handler = [](const LogMessage& msg, void* ctx) {
         auto* stream = static_cast<std::ostringstream*>(ctx);
         *stream << "[" << msg.timestamp << "] "
@@ -317,23 +343,17 @@ int main() {
                 << msg.tag << ": " << msg.message << "\n";
     };
 
-    logger.registerHandler(LogLevel::INFO, handler, &out);
-    logger.log(LogLevel::INFO, "RTC", "Synchronized with system clock");
+    registerHandler(LogLevel::INFO, handler, &out);
+
+    log(LogLevel::INFO, "RTC", "Synchronized with system clock");
 
     std::cout << out.str();
 }
-
 ```
 
-#### 
-```C++
-[1745201012345678] INFO - RTC: Synchronized with system clock
+```c++
+[1745201789334567] INFO - RTC: Synchronized with system clock
 ```
-### Providing a Custom Timestamp Function
-
-- Use `Logger::setTimestampProvider()` to inject a time function
-- Example using `std::chrono::system_clock` or `esp_timer_get_time()`
-
 ### Sequence Number as Fallback
 
 - Explain `logSequence++` behavior when no timestamp is available
