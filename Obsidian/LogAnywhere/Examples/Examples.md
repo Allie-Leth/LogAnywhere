@@ -9,26 +9,33 @@ This section contains practical usage examples for integrating and extending the
 
 - Create a `Logger` instance
 ```C++
-#include "LogAnywhere.h"
-#include <iostream>
-
-using namespace LogAnywhere;
-
 int main() {
-    auto consoleHandler = [](const LogMessage& msg, void* ctx) {
-        auto* out = static_cast<std::ostream*>(ctx);
-        *out << "[" << toString(msg.level) << "] "
-             << msg.tag << ": " << msg.message << "\n";
+    auto consoleHandler = []( const LogAnywhere::LogMessage &msg, void *ctx ) {
+        auto *out = static_cast<std::ostream*>(ctx);
+        *out << "[" 
+             << LogAnywhere::toString(msg.level) 
+             << "] " 
+             << msg.tag 
+             << ": " 
+             << msg.message 
+             << "\n";
     };
 
-    // Register console handler
-    registerHandler(LogLevel::INFO, consoleHandler, &std::cout);
+    // Register console handler at INFO+
+    LogAnywhere::registerHandler(
+        LogAnywhere::LogLevel::INFO,
+        consoleHandler,
+        &std::cout
+    );
 
     // Send a basic log
-    log(LogLevel::INFO, "MAIN", "System initialized");
+    LogAnywhere::log(
+        LogAnywhere::LogLevel::INFO,
+        "MAIN",
+        "System initialized"
+    );
 }
-
-``
+```
 - Register a basic handler (e.g., `std::cout`, Serial)
 - Make a simple `log()` call
 
@@ -41,7 +48,7 @@ int main() {
   - `LogLevel::WARN`
   - `LogLevel::ERROR`
 - Show how severity filtering works
-```
+
 ### Logging with `logf()`
 
 - Use `logf(LogLevel, tag, format, ...)` to log dynamic values
@@ -54,75 +61,80 @@ int main() {
 	Not Implemented
 	```
 
----
+
 
 ## Handler Patterns
 
 ### Logger Severity Levels
 
 ```C++
-#include "LogAnywhere.h"
-#include <iostream>
-
-using namespace LogAnywhere;
-
 int main() {
-    auto consoleHandler = [](const LogMessage& msg, void* ctx) {
-        auto* out = static_cast<std::ostream*>(ctx);
-        *out << "[" << toString(msg.level) << "] "
-             << msg.tag << ": " << msg.message << "\n";
+    auto consoleHandler = []( const LogAnywhere::LogMessage &msg, void *ctx ) {
+        auto *out = static_cast<std::ostream*>(ctx);
+        *out << "[" 
+             << LogAnywhere::toString(msg.level) 
+             << "] " 
+             << msg.tag 
+             << ": " 
+             << msg.message 
+             << "\n";
     };
 
-    registerHandler(LogLevel::WARN, consoleHandler, &std::cout);
+    // Only WARN+ go to this handler
+    LogAnywhere::registerHandler(
+        LogAnywhere::LogLevel::WARN,
+        consoleHandler,
+        &std::cout
+    );
 
-    log(LogLevel::TRACE, "TEST", "Trace message");   // Ignored
-    log(LogLevel::DEBUG, "TEST", "Debug message");   // Ignored
-    log(LogLevel::INFO,  "TEST", "Info message");    // Ignored
-    log(LogLevel::WARN,  "TEST", "Warn message");    // Printed
-    log(LogLevel::ERR,   "TEST", "Error message");   // Printed
+    LogAnywhere::log(LogAnywhere::LogLevel::TRACE, "TEST", "Trace message");   // Ignored
+    LogAnywhere::log(LogAnywhere::LogLevel::DEBUG, "TEST", "Debug message");   // Ignored
+    LogAnywhere::log(LogAnywhere::LogLevel::INFO,  "TEST", "Info message");    // Ignored
+    LogAnywhere::log(LogAnywhere::LogLevel::WARN,  "TEST", "Warn message");    // Printed
+    LogAnywhere::log(LogAnywhere::LogLevel::ERR,   "TEST", "Error message");   // Printed
 }
-
-
 ```
 
 
 ### Multi-handler Severity Levels
 
 ```C++
-#include "LogAnywhere.h"
-#include <iostream>
-#include <sstream>
-
-using namespace LogAnywhere;
-
 int main() {
     std::ostringstream mqttStream;
     std::ostringstream serialStream;
 
-    auto mqttHandler = [](const LogMessage& msg, void* ctx) {
-        auto* out = static_cast<std::ostringstream*>(ctx);
-        *out << "[MQTT] " << toString(msg.level) << " - "
-             << msg.tag << ": " << msg.message << "\n";
+    auto mqttHandler = []( const LogAnywhere::LogMessage &msg, void *ctx ) {
+        auto *out = static_cast<std::ostringstream*>(ctx);
+        *out << "[MQTT] " 
+             << LogAnywhere::toString(msg.level) 
+             << " - " 
+             << msg.tag 
+             << ": " 
+             << msg.message 
+             << "\n";
     };
 
-    auto serialHandler = [](const LogMessage& msg, void* ctx) {
-        auto* out = static_cast<std::ostringstream*>(ctx);
-        *out << "[SERIAL] " << toString(msg.level) << " - "
-             << msg.tag << ": " << msg.message << "\n";
+    auto serialHandler = []( const LogAnywhere::LogMessage &msg, void *ctx ) {
+        auto *out = static_cast<std::ostringstream*>(ctx);
+        *out << "[SERIAL] " 
+             << LogAnywhere::toString(msg.level) 
+             << " - " 
+             << msg.tag 
+             << ": " 
+             << msg.message 
+             << "\n";
     };
 
-    registerHandler(LogLevel::INFO, mqttHandler, &mqttStream);
-    registerHandler(LogLevel::ERR, serialHandler, &serialStream);
+    LogAnywhere::registerHandler(LogAnywhere::LogLevel::INFO, mqttHandler,   &mqttStream);
+    LogAnywhere::registerHandler(LogAnywhere::LogLevel::ERR,  serialHandler, &serialStream);
 
-    log(LogLevel::DEBUG, "NET", "Network check");          // Ignored by both
-    log(LogLevel::INFO,  "NET", "Ping successful");        // MQTT only
-    log(LogLevel::ERR,   "NET", "Failed to reach server"); // Both
+    LogAnywhere::log(LogAnywhere::LogLevel::DEBUG, "NET", "Network check");          // Ignored
+    LogAnywhere::log(LogAnywhere::LogLevel::INFO,  "NET", "Ping successful");        // MQTT only
+    LogAnywhere::log(LogAnywhere::LogLevel::ERR,   "NET", "Failed to reach server"); // Both
 
-    std::cout << "=== MQTT Output ===\n" << mqttStream.str();
+    std::cout << "=== MQTT Output ===\n"   << mqttStream.str();
     std::cout << "=== Serial Output ===\n" << serialStream.str();
 }
-
-
 ```
 ---
 
@@ -131,47 +143,58 @@ int main() {
 ### Tag-Based Filtering
 
 ```C++
-#include "LogAnywhere.h"
-#include <iostream>
-#include <sstream>
-
-using namespace LogAnywhere;
-
 int main() {
     std::ostringstream filteredStream;
     std::ostringstream unfilteredStream;
 
-    auto tagFilter = [](const char* tag, void*) -> bool {
+    auto tagFilter = []( const char* tag, void* ) -> bool {
         return std::string(tag) == "SENSOR";
     };
 
-    auto filteredHandler = [](const LogMessage& msg, void* ctx) {
-        auto* out = static_cast<std::ostringstream*>(ctx);
-        *out << "[FILTERED] " << toString(msg.level) << " - "
-             << msg.tag << ": " << msg.message << "\n";
+    auto filteredHandler = []( const LogAnywhere::LogMessage &msg, void *ctx ) {
+        auto *out = static_cast<std::ostringstream*>(ctx);
+        *out << "[FILTERED] " 
+             << LogAnywhere::toString(msg.level) 
+             << " - " 
+             << msg.tag 
+             << ": " 
+             << msg.message 
+             << "\n";
     };
 
-    auto unfilteredHandler = [](const LogMessage& msg, void* ctx) {
-        auto* out = static_cast<std::ostringstream*>(ctx);
-        *out << "[RAW] " << toString(msg.level) << " - "
-             << msg.tag << ": " << msg.message << "\n";
+    auto unfilteredHandler = []( const LogAnywhere::LogMessage &msg, void *ctx ) {
+        auto *out = static_cast<std::ostringstream*>(ctx);
+        *out << "[RAW] " 
+             << LogAnywhere::toString(msg.level) 
+             << " - " 
+             << msg.tag 
+             << ": " 
+             << msg.message 
+             << "\n";
     };
 
-    registerHandler(LogLevel::INFO, filteredHandler, &filteredStream, tagFilter);
-    registerHandler(LogLevel::INFO, unfilteredHandler, &unfilteredStream);
+    LogAnywhere::registerHandler(
+        LogAnywhere::LogLevel::INFO,
+        filteredHandler,
+        &filteredStream,
+        tagFilter
+    );
+    LogAnywhere::registerHandler(
+        LogAnywhere::LogLevel::INFO,
+        unfilteredHandler,
+        &unfilteredStream
+    );
 
-    log(LogLevel::INFO, "SENSOR", "Temperature: 22.5C");
-    log(LogLevel::INFO, "CORE", "System ready");
-    log(LogLevel::INFO, "SENSOR", "Humidity: 48%");
+    LogAnywhere::log(LogAnywhere::LogLevel::INFO, "SENSOR", "Temperature: 22.5C");
+    LogAnywhere::log(LogAnywhere::LogLevel::INFO, "CORE",   "System ready");
+    LogAnywhere::log(LogAnywhere::LogLevel::INFO, "SENSOR", "Humidity: 48%");
 
-    std::cout << "=== Filtered Output (Only SENSOR) ===\n" << filteredStream.str();
-    std::cout << "=== Unfiltered Output (All INFO+) ===\n" << unfilteredStream.str();
+    std::cout << "=== Filtered (Only SENSOR) ===\n"   << filteredStream.str();
+    std::cout << "=== Unfiltered (All INFO+) ===\n" << unfilteredStream.str();
 }
-
-
 ```
 
-#### Expected Output
+##### Expected Output
 ```C++
 === Filtered Output (Only SENSOR) ===
 [FILTERED] INFO - SENSOR: Temperature: 22.5C
@@ -186,50 +209,71 @@ int main() {
 ### Passing Context into Handlers
 
 ```c++
-#include "LogAnywhere.h"
-#include <iostream>
-#include <sstream>
-#include <vector>
-
-using namespace LogAnywhere;
-
 int main() {
-    Logger logger;
+    // Create a standalone Logger instance
+    LogAnywhere::Logger logger;
 
     std::ostringstream consoleStream;
     std::vector<std::string> asyncQueue;
 
-    // A generic handler that writes to either ostream or queue, based on context
-    auto ContextAwareHandler = [](const LogMessage& msg, void* ctx) {
-        if (auto* stream = static_cast<std::ostringstream*>(ctx)) {
-            *stream << "[" << toString(msg.level) << "] "
-                    << msg.tag << ": " << msg.message << "\n";
+    // A generic handler that writes to an ostream when ctx is an ostringstream
+    auto ContextAwareHandler = [](
+        const LogAnywhere::LogMessage &msg,
+        void *ctx
+    ) {
+        if (auto *out = static_cast<std::ostringstream*>(ctx)) {
+            *out << "["
+                 << LogAnywhere::toString(msg.level)
+                 << "] "
+                 << msg.tag
+                 << ": "
+                 << msg.message
+                 << "\n";
         }
     };
 
-    auto AsyncHandler = [](const LogMessage& msg, void* ctx) {
-        auto* queue = static_cast<std::vector<std::string>*>(ctx);
-        queue->push_back(std::string(msg.tag) + ": " + msg.message);
+    // An async-style handler that pushes messages into a string vector
+    auto AsyncHandler = [](
+        const LogAnywhere::LogMessage &msg,
+        void *ctx
+    ) {
+        if (auto *queue = static_cast<std::vector<std::string>*>(ctx)) {
+            queue->push_back(
+                std::string(msg.tag) + ": " + msg.message
+            );
+        }
     };
 
-    // Register same handler logic for different outputs
-    logger.registerHandler(LogLevel::INFO, ContextAwareHandler, &consoleStream);
-    logger.registerHandler(LogLevel::INFO, AsyncHandler, &asyncQueue);
+    // Register both handlers at INFO level, passing their respective contexts
+    logger.registerHandler(
+        LogAnywhere::LogLevel::INFO,
+        ContextAwareHandler,
+        &consoleStream
+    );
+    logger.registerHandler(
+        LogAnywhere::LogLevel::INFO,
+        AsyncHandler,
+        &asyncQueue
+    );
 
-    logger.log(LogLevel::INFO, "SYS", "Boot complete");
-    logger.log(LogLevel::INFO, "NET", "Connected to WiFi");
+    // Emit some logs
+    logger.log(LogAnywhere::LogLevel::INFO, "SYS", "Boot complete");
+    logger.log(LogAnywhere::LogLevel::INFO, "NET", "Connected to WiFi");
 
-    std::cout << "=== Stream Output ===\n" << consoleStream.str();
+    // Output the results
+    std::cout << "=== Stream Output ===\n"
+              << consoleStream.str() << "\n";
 
     std::cout << "=== Async Queue ===\n";
-    for (const auto& entry : asyncQueue) {
+    for (const auto &entry : asyncQueue) {
         std::cout << entry << "\n";
     }
-}
 
+    return 0;
+}
 ```
 
-#### Expected Output
+##### Expected Output
 ```C++
 === Stream Output ===
 [INFO] SYS: Boot complete
@@ -243,33 +287,43 @@ NET: Connected to WiFi
 ### Named Handlers
 
 ```C++
-#include "LogAnywhere.h"
-#include <iostream>
-#include <sstream>
-
-using namespace LogAnywhere;
 
 int main() {
-    Logger logger;
+    LogAnywhere::Logger logger;
     std::ostringstream alertStream;
 
-    auto TwilioHandler = [](const LogMessage& msg, void* ctx) {
-        auto* out = static_cast<std::ostringstream*>(ctx);
-        *out << "[TWILIO] " << msg.tag << ": " << msg.message << "\n";
+    // A handler that sends alerts to a Twilio-like sink
+    auto TwilioHandler = [](
+        const LogAnywhere::LogMessage &msg,
+        void *ctx
+    ) {
+        if (auto *out = static_cast<std::ostringstream*>(ctx)) {
+            *out << "[TWILIO] "
+                 << msg.tag
+                 << ": "
+                 << msg.message
+                 << "\n";
+        }
     };
 
     // Register a named handler called "Twilio"
-    logger.registerHandler(LogLevel::ERR, TwilioHandler, &alertStream, "Twilio");
+    logger.registerHandler(
+        LogAnywhere::LogLevel::ERR,
+        TwilioHandler,
+        &alertStream,
+        nullptr,
+        "Twilio"
+    );
 
-    logger.log(LogLevel::ERR, "ALERT", "Battery level critical");
+    // Only error-level logs go through
+    logger.log(LogAnywhere::LogLevel::ERR, "ALERT", "Battery level critical");
 
-    std::cout << "=== Named Handler Output ===\n";
-    std::cout << alertStream.str();
+    std::cout << "=== Named Handler Output ===\n"
+              << alertStream.str();
 }
-
 ```
 
-#### Output
+##### Expected Output
 ```C++
 === Named Handler Output ===
 [TWILIO] ALERT: Battery level critical
@@ -282,34 +336,41 @@ int main() {
 
 ### Using Default Timestamp (Sequential counter fallback)
 ```C++
-#include "LogAnywhere.h"
-#include <iostream>
-#include <sstream>
-
-using namespace LogAnywhere;
-
 int main() {
     std::ostringstream out;
 
-    auto simpleHandler = [](const LogMessage& msg, void* ctx) {
-        auto* stream = static_cast<std::ostringstream*>(ctx);
-        *stream << "[" << msg.timestamp << "] "
-                << toString(msg.level) << " - "
-                << msg.tag << ": " << msg.message << "\n";
+    auto simpleHandler = [](
+        const LogAnywhere::LogMessage &msg,
+        void *ctx
+    ) {
+        if (auto *stream = static_cast<std::ostringstream*>(ctx)) {
+            *stream << "[" 
+                    << msg.timestamp 
+                    << "] "
+                    << LogAnywhere::toString(msg.level) 
+                    << " - "
+                    << msg.tag
+                    << ": "
+                    << msg.message
+                    << "\n";
+        }
     };
 
-    registerHandler(LogLevel::INFO, simpleHandler, &out);
+    // Using the free-function API
+    LogAnywhere::registerHandler(
+        LogAnywhere::LogLevel::INFO,
+        simpleHandler,
+        &out
+    );
 
-    log(LogLevel::INFO, "BOOT", "Logger starting up");
-    log(LogLevel::INFO, "BOOT", "Initialization complete");
+    LogAnywhere::log(LogAnywhere::LogLevel::INFO, "BOOT", "Logger starting up");
+    LogAnywhere::log(LogAnywhere::LogLevel::INFO, "BOOT", "Initialization complete");
 
     std::cout << out.str();
 }
-
-
 ```
 
-#### 
+##### Expected Output
 ```C++
 [1] INFO - BOOT: Logger starting up
 [2] INFO - BOOT: Initialization complete
@@ -317,16 +378,10 @@ int main() {
 ### Providing a Custom Timestamp Function
 
 ```C++
-#include "LogAnywhere.h"
-#include <iostream>
-#include <sstream>
-#include <chrono>
-
-using namespace LogAnywhere;
-
 int main() {
     std::ostringstream out;
 
+    // Provide microsecond timestamps from the system clock
     auto systemClockTime = []() -> uint64_t {
         using namespace std::chrono;
         return duration_cast<microseconds>(
@@ -334,23 +389,42 @@ int main() {
         ).count();
     };
 
-    logger.setTimestampProvider(systemClockTime);
+    // Set on the static logger instance
+    LogAnywhere::logger.setTimestampProvider(systemClockTime);
 
-    auto handler = [](const LogMessage& msg, void* ctx) {
-        auto* stream = static_cast<std::ostringstream*>(ctx);
-        *stream << "[" << msg.timestamp << "] "
-                << toString(msg.level) << " - "
-                << msg.tag << ": " << msg.message << "\n";
+    auto handler = [](
+        const LogAnywhere::LogMessage &msg,
+        void *ctx
+    ) {
+        if (auto *stream = static_cast<std::ostringstream*>(ctx)) {
+            *stream << "[" 
+                    << msg.timestamp 
+                    << "] "
+                    << LogAnywhere::toString(msg.level) 
+                    << " - "
+                    << msg.tag 
+                    << ": " 
+                    << msg.message 
+                    << "\n";
+        }
     };
 
-    registerHandler(LogLevel::INFO, handler, &out);
+    LogAnywhere::registerHandler(
+        LogAnywhere::LogLevel::INFO,
+        handler,
+        &out
+    );
 
-    log(LogLevel::INFO, "RTC", "Synchronized with system clock");
+    LogAnywhere::log(
+        LogAnywhere::LogLevel::INFO,
+        "RTC",
+        "Synchronized with system clock"
+    );
 
     std::cout << out.str();
 }
 ```
-
+##### Expected Output
 ```c++
 [1745201789334567] INFO - RTC: Synchronized with system clock
 ```
