@@ -185,11 +185,22 @@ If you cloned the repo with `README/` or `obsidian/`:
 
 ## Contribution & Intent
 
-This project is maintained by a single developer for use across embedded and personal tooling projects. It is designed to reflect:
+LogAnywhere is primarily designed, implemented, and maintained by a single developer to ensure a focused, lightweight core. That said, contributions that meet the project’s quality and style standards are welcome. If you’d like to contribute:
 
-- Real-world constraints of microcontrollers
-- A preference for portable, testable, and pluggable software
-- An emphasis on design clarity and low-overhead reuse
-- Frustration at having to build a log handler for every mesh project. 
+**Follow the existing style**
+ - Header-only, no dynamic allocations or STL containers
+ - C++17-compatible, no additional dependencies
+ - Avoid dynamic or hash-based containers
+ - Fixed-size arrays or simple loops to minimize code size and RAM use.
 
-If you're reviewing this as part of a hiring - the majority of my code goes to my private gitlab instance for privacy reasons. What's listed here is purely for 
+**Write Tests**
+- Include unit tests for any new functionality using the existing Catch2 setup
+- Ensure all existing tests pass
+
+**Document your changes**
+- Update the Doxygen-style comments in the headers
+- Add or adjust examples in the examples/ folder if applicable
+
+**Submit via pull request**
+- Target the `dev` branch
+- Briefly explain what you’d like to add or fix
