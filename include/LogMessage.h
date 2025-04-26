@@ -13,17 +13,21 @@
 
 namespace LogAnywhere {
 
-    /**
-     * @brief Describes a single log event passed to handlers.
-     *
-     * Each handler receives a `LogMessage` and may route it, serialize it,
-     * display it, or store it depending on its configuration.
-     */
     struct LogMessage {
-        LogLevel level;         ///< Severity level of the log message
-        const char* tag;        ///< Subsystem or component name (e.g., "WiFi", "OTA", etc.)
-        const char* message;    ///< Already-formatted message string
-        uint64_t timestamp = 0; ///< Optional timestamp (UTC or monotonic); injected externally
-    };
+        LogLevel     level;      ///< Severity level of the log message
+        const char*  tag;        ///< Subsystem or component name
+        const char*  message;    ///< Already-formatted message string
+        uint64_t     timestamp;  ///< Optional timestamp
 
+        // <<< ADD THIS CONSTRUCTOR >>>
+        constexpr LogMessage(LogLevel lvl,
+                             const char* tg,
+                             const char* msg,
+                             uint64_t ts = 0)
+          : level(lvl),
+            tag(tg),
+            message(msg),
+            timestamp(ts)
+        {}
+    };
 } // namespace LogAnywhere
