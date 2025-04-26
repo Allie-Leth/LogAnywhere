@@ -6,9 +6,11 @@
 
 ## Why LogAnywhere Exists
 
-Most embedded systems need logs — but in projects involving **meshes and nested mesh topologies**, I've found that traditional logging strategies fall short from what I needed. When each device may have different capabilities and constraints - and importantly may need to point to multiple outputs like serial, text file, mqtt, tcp/ip, etc - so a **single, inflexible logging system doesn’t scale**. After rewriting the same scaffolding over and over for different transports, I built **LogAnywhere** to **separate routing logic from output logic**, allowing flexible, pluggable handlers that can be reused across the entire mesh or mesh-of-meshes with minimal overhead. Built for embedded, usable anywhere. 
+LogAnywhere was born out of the needs of a growing ESP32 and Pi fleet running complex mesh and mesh-of-mesh networks - particularly in CI/CD environments. Traditional logging frameworks quickly proved inadequate when simultaneous outputs—to a file, serial console, MQTT broker, or custom sink—became essential. After repeatedly reimplementing the same handlers by hand, I created LogAnywhere as a single, reusable core. It cleanly decouples routing from output, enabling you to plug in any combination of handlers across your entire fleet.
 
-You define where messages go. LogAnywhere dispatches based on level, tags, and filters. The library itself never assumes transport or formatting — that's entirely up to the developer.
+In embedded systems, logging is far more than development-time verbosity—it's often part of the device's primary functionality. LogAnywhere is designed from the ground up to support multi-destination logging as a fundamental feature, not an afterthought.
+
+You choose the destinations. LogAnywhere routes each entry based on severity, tags, and optional filters. It remains completely transport and format agnostic, giving you full control over how and where your logs are delivered.
 
 ---
 
@@ -20,7 +22,8 @@ You define where messages go. LogAnywhere dispatches based on level, tags, and f
 - Pluggable handlers via function pointers and context
 - Optional per-handler tag filters
 - Microcontroller-safe 
-- Designed for both synchronous and future async backends.
+- Provides synchronous logging today; asynchronous mode is on the roadmap.
+- No dynamic allocations (e.g. no STL containers), keeping RAM footprint and CPU overhead extremely low
 
 ---
 
