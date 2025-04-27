@@ -17,7 +17,7 @@
 #include <cstring> // For strcmp
 
 #ifndef LOGANYWHERE_MAX_HANDLERS
-#define LOGANYWHERE_MAX_HANDLERS 512 // Default maximum number of handlers - can be overridden, this is purely for length of list to avoid dynamic lists. 
+#define LOGANYWHERE_MAX_HANDLERS 512 // Default maximum number of handlers - can be overridden, this is purely for length of list to avoid dynamic lists.
 #endif
 
 namespace LogAnywhere
@@ -31,6 +31,19 @@ namespace LogAnywhere
          */
         HandlerManager()
             : handlerCount(0), nextHandlerId(1) {}
+
+        /**
+         * @brief Clears all registered handlers and resets the ID counter.
+         *
+         * After calling this, no handlers are registered and IDs start from 1 again.
+         */
+        void clearHandlers()
+        {
+            // Reset all handler entries to a default state (zero out pointers, IDs, etc.)
+            std::memset(handlers, 0, sizeof(handlers));
+            handlerCount = 0;
+            nextHandlerId = 1;
+        }
 
         /**
          * @brief Registers a new log handler.
@@ -50,10 +63,10 @@ namespace LogAnywhere
         bool registerHandler(
             LogLevel level,
             LogHandler handler,
-            void* context = nullptr,
+            void *context = nullptr,
             TagFilterFn tagFilter = nullptr,
-            const char* name = nullptr,
-            void* filterContext = nullptr)
+            const char *name = nullptr,
+            void *filterContext = nullptr)
         {
             if (handlerCount >= LOGANYWHERE_MAX_HANDLERS)
                 return false;
@@ -87,7 +100,7 @@ namespace LogAnywhere
          * @param name The name of the handler to remove
          * @return true if the handler was found and removed, false otherwise
          */
-        bool unregisterHandlerByName(const char* name)
+        bool unregisterHandlerByName(const char *name)
         {
             for (size_t i = 0; i < handlerCount; ++i)
             {
@@ -110,7 +123,7 @@ namespace LogAnywhere
          * @param outCount [out] Populated with the number of registered handlers
          * @return Pointer to the internal handler array
          */
-        const HandlerEntry* listHandlers(size_t& outCount) const
+        const HandlerEntry *listHandlers(size_t &outCount) const
         {
             outCount = handlerCount;
             return handlers;

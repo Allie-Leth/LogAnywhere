@@ -11,6 +11,50 @@
 
 using namespace LogAnywhere;
 
+// A no‐op handler for registration
+static void dummyHandler(const LogMessage&, void*) {}
+
+inline void clearAndVerify()
+{
+    handlerManager.clearHandlers();
+    size_t count = 0;
+    handlerManager.listHandlers(count);
+    REQUIRE(count == 0); // ✅ Confirm no handlers left
+}
+
+
+TEST_CASE("clearHandlers resets registry and ID counter", "[HandlerManager]") {
+    // 1) Clear any existing handlers
+    handlerManager.clearHandlers();
+
+    // 2) Verify empty
+    size_t count = 0;
+    auto ptr = handlerManager.listHandlers(count);
+    REQUIRE(count == 0);                   // no handlers
+    REQUIRE(ptr != nullptr);               // pointer always valid
+
+    // 3) Register two handlers and verify IDs
+    REQUIRE(handlerManager.registerHandler(LogLevel::INFO,  dummyHandler));
+    REQUIRE(handlerManager.registerHandler(LogLevel::WARN,  dummyHandler));
+    ptr = handlerManager.listHandlers(count);
+    REQUIRE(count == 2);
+    REQUIRE(ptr[0].id == 1);
+    REQUIRE(ptr[1].id == 2);
+
+    // 4) Clear again
+    handlerManager.clearHandlers();
+    ptr = handlerManager.listHandlers(count);
+    REQUIRE(count == 0);
+
+    // 5) Re-register and verify ID resets to 1
+    REQUIRE(handlerManager.registerHandler(LogLevel::ERR, dummyHandler));
+    ptr = handlerManager.listHandlers(count);
+    REQUIRE(count == 1);
+    REQUIRE(ptr[0].id == 1);
+    clearAndVerify(); // Cleanup
+
+}
+
 TEST_CASE("Logger writes to a std::ostringstream (simulated Serial)", "[Handler][Serial]") {
     std::ostringstream serialStream;
 
@@ -26,6 +70,9 @@ TEST_CASE("Logger writes to a std::ostringstream (simulated Serial)", "[Handler]
     std::string output = serialStream.str();
     REQUIRE(output.find("Logged to stream") != std::string::npos);
     REQUIRE(output.find("[INFO] SERIAL") != std::string::npos);
+    clearAndVerify(); // Cleanup
+
+    
 }
 
 TEST_CASE("Logger writes to a file", "[Handler][File]") {
@@ -50,6 +97,7 @@ TEST_CASE("Logger writes to a file", "[Handler][File]") {
 
     REQUIRE(line.find("Writing to file") != std::string::npos);
     REQUIRE(std::remove(filename.c_str()) == 0); // ✅ Cleanup
+    clearAndVerify(); // Cleanup
 }
 
 TEST_CASE("Logger queues logs into a vector (simulated async/memory buffer)", "[Handler][Async]") {
@@ -68,6 +116,7 @@ TEST_CASE("Logger queues logs into a vector (simulated async/memory buffer)", "[
     REQUIRE(messageQueue.size() == 2);
     REQUIRE(messageQueue[0] == "ASYNC: Queued 1");
     REQUIRE(messageQueue[1] == "ASYNC: Queued 2");
+    clearAndVerify(); // Cleanup
 }
 
 TEST_CASE("Logger sends logs to multiple handlers", "[Logger][Handlers][Multiple]") {
@@ -103,6 +152,7 @@ TEST_CASE("Logger sends logs to multiple handlers", "[Logger][Handlers][Multiple
     REQUIRE(serialLine.find("This should go to both") != std::string::npos);
 
     REQUIRE(std::remove(filename.c_str()) == 0); // ✅ Cleanup
+    clearAndVerify(); // Cleanup
 }
 
 TEST_CASE("Tag filter prevents handler from receiving unmatched logs", "[Logger][Handlers][Filter]") {
@@ -142,6 +192,7 @@ TEST_CASE("Tag filter prevents handler from receiving unmatched logs", "[Logger]
     REQUIRE(serialLine.find("This should only go to serial") != std::string::npos);
 
     REQUIRE(std::remove(filename.c_str()) == 0); // ✅ Cleanup
+    clearAndVerify(); // Cleanup
 }
 
 TEST_CASE("Handler registration and unregistration by ID", "[Handler][Register]") {
@@ -169,6 +220,7 @@ TEST_CASE("Handler registration and unregistration by ID", "[Handler][Register]"
     size_t newCount = 0;
     LogAnywhere::handlerManager.listHandlers(newCount);
     REQUIRE(newCount == count - 1);
+    clearAndVerify(); // Cleanup
 }
 
 TEST_CASE("Handler registration and unregistration by Name", "[Handler][Register][Name]") {
@@ -197,6 +249,7 @@ TEST_CASE("Handler registration and unregistration by Name", "[Handler][Register
             REQUIRE(std::string(handlers[i].name) != handlerName);
         }
     }
+    clearAndVerify(); // Cleanup
 }
 
 TEST_CASE("Handler listing after registration", "[Handler][List]") {
@@ -223,6 +276,7 @@ TEST_CASE("Handler listing after registration", "[Handler][List]") {
     // Confirm last handler matches what we added
     REQUIRE(handlers[newCount - 1].name != nullptr);
     REQUIRE(std::string(handlers[newCount - 1].name) == "ListTestHandler");
+    clearAndVerify(); // Cleanup
 }
 
 TEST_CASE("Handler lookup by ID", "[Handler][Find][ID]") {
@@ -253,6 +307,7 @@ TEST_CASE("Handler lookup by ID", "[Handler][Find][ID]") {
     }
 
     REQUIRE(found);
+    clearAndVerify(); // Cleanup
 }
 
 TEST_CASE("Handler lookup by name", "[Handler][Find][Name]") {
@@ -283,4 +338,5 @@ TEST_CASE("Handler lookup by name", "[Handler][Find][Name]") {
     }
 
     REQUIRE(found);
+    clearAndVerify(); // Cleanup
 }
