@@ -14,12 +14,15 @@
 namespace LogAnywhere {
 
     struct LogMessage {
+
+        LogMessage() = default; ///< Default constructor
+        
+
         LogLevel     level;      ///< Severity level of the log message
         const char*  tag;        ///< Subsystem or component name
         const char*  message;    ///< Already-formatted message string
         uint64_t     timestamp;  ///< Optional timestamp
 
-        // <<< ADD THIS CONSTRUCTOR >>>
         constexpr LogMessage(LogLevel lvl,
                              const char* tg,
                              const char* msg,
