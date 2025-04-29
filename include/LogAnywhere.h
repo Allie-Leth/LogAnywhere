@@ -2,124 +2,146 @@
 
 /**
  * @file LogAnywhere.h
- * @brief Single include header that exposes full logging functionality.
+ * @brief Single-include header exposing the high-performance Tag*-based logging API.
  *
- * This file combines handler management and logging into a single easy-to-use interface.
+ * Version 1.1.0 removes all legacy string/tagFilter APIs in favor of exact
+ * Tag* subscriptions and dispatch.  Handlers register once with a list of
+ * Tag* pointers, and each log(tag) call fans out only to those subscribers.
  */
 
-#include "Logger.h"
-#include "HandlerManager.h"
-#include "HandlerEntry.h"
+#include <cstdarg>
+#include <cstdint>
+
 #include "LogLevel.h"
 #include "LogMessage.h"
+#include "Tag.h"
+#include "HandlerEntry.h"
+#include "HandlerManager.h"
+#include "Logger.h"
 
-namespace LogAnywhere
+namespace LogAnywhere {
+
+/** 
+ * @brief Global handler registry.  
+ * Used internally by all the inline functions below.
+ */
+static HandlerManager handlerManager;
+
+/**
+ * @brief Global logger instance wired to the above HandlerManager.
+ */
+static Logger logger(&handlerManager);
+
+//=== Handler management API ===//
+
+/**
+ * @brief Register a handler for an explicit list of Tag* subscriptions.
+ *
+ * Each handler will only receive messages logged via those Tag* pointers.
+ *
+ * @param level     Minimum severity level that triggers this handler
+ * @param handler   Callback to invoke for each matching LogMessage
+ * @param context   User data pointer passed through to the callback
+ * @param tags      Array of Tag* this handler subscribes to
+ * @param tagCount  Number of entries in @p tags
+ * @param name      Optional human-readable name (for diagnostics or removal)
+ * @return true on success; false if the handler limit was reached
+ */
+inline bool registerHandler(
+    LogLevel       level,
+    LogHandler     handler,
+    void*          context,
+    const Tag*     tags[],
+    size_t         tagCount,
+    const char*    name = nullptr)
 {
-    // Internal static instances
-    static HandlerManager handlerManager;
-    static Logger logger(&handlerManager);
+    return handlerManager.registerHandlerForTags(
+        level, handler, context, tags, tagCount, name);
+}
 
-    // === Handler management API ===
+/**
+ * @brief Completely remove a handler by its unique ID.
+ *
+ * This expensive operation prunes the handler from every Tag’s subscriber list
+ * and compacts the internal registry.  Use sparingly if you need to reclaim slots.
+ *
+ * @param id  Unique ID of the handler to delete
+ * @return true if found and removed; false otherwise
+ */
+inline bool deleteHandlerByID(uint16_t id)
+{
+    return handlerManager.deleteHandlerByID(id);
+}
 
-    /**
-     * @brief Registers a new log handler with optional tag filtering and metadata.
-     *
-     * This function allows full configuration of a handler, including:
-     * - Minimum severity level
-     * - Optional context pointer
-     * - Optional tag-based filter function
-     * - Optional handler name (for debug/unregistration)
-     * - Optional context for the filter function
-     *
-     * If no tag filter or name is provided, the handler will receive all messages
-     * at or above the specified level.
-     *
-     * @param level         Minimum severity level to invoke this handler
-     * @param handler       Function pointer to the handler function
-     * @param context       Optional user context passed to the handler (default: nullptr)
-     * @param tagFilter     Optional tag filtering function; if null, no filtering is applied (default: nullptr)
-     * @param name          Optional human-readable name for the handler (default: nullptr)
-     * @param filterContext Optional context passed to the tag filter function (default: nullptr)
-     * @return true if registration was successful, false if handler limit exceeded
-     */
-    inline bool registerHandler(
-        LogLevel level,
-        LogHandler handler,
-        void* context = nullptr,
-        TagFilterFn tagFilter = nullptr,
-        const char* name = nullptr,
-        void* filterContext = nullptr)
-    {
-        return handlerManager.registerHandler(level, handler, context, tagFilter, name, filterContext);
-    }
+/**
+ * @brief Completely remove a handler by its name.
+ *
+ * Same expensive semantics as deleteHandlerByID().
+ *
+ * @param name  Name of the handler to delete
+ * @return true if found and removed; false otherwise
+ */
+inline bool deleteHandlerByName(const char* name)
+{
+    return handlerManager.deleteHandlerByName(name);
+}
 
-    /**
-     * @brief Unregisters a handler by its unique ID.
-     *
-     * @param id Unique ID of the handler
-     */
-    inline bool unregisterHandlerByID(uint16_t id)
-    {
-        return handlerManager.unregisterHandlerByID(id);
-    }
+/**
+ * @brief Clears all handlers and resets the internal ID counter.
+ *
+ * After this call, no handlers remain registered and new registrations
+ * will begin again at ID = 1.
+ */
+inline void clearHandlers()
+{
+    handlerManager.clearHandlers();
+}
 
-    /**
-     * @brief Unregisters a handler by its name.
-     *
-     * @param name Name of the handler
-     */
-    inline bool unregisterHandlerByName(const char* name)
-    {
-        return handlerManager.unregisterHandlerByName(name);
-    }
+//=== Logging API ===//
 
-    // === Logging API ===
+/**
+ * @brief Log a preformatted message via a Tag*.
+ *
+ * Only handlers subscribed to tag will be invoked (and only if
+ * the log level meets their threshold).
+ *
+ * @param level      Severity level of this message
+ * @param tag        Pointer to a static Tag instance
+ * @param message    Preformatted C-string
+ * @param timestamp  Optional timestamp (0→use provider or sequence)
+ */
+inline void log(
+    LogLevel     level,
+    const Tag*   tag,
+    const char*  message,
+    uint64_t     timestamp = 0)
+{
+    logger.log(level, tag, message, timestamp);
+}
 
-    /**
-     * @brief Logs a preformatted message.
-     *
-     * @param level Severity level
-     * @param tag Subsystem/component tag
-     * @param message Preformatted log message
-     * @param timestamp Optional timestamp
-     */
-    inline void log(LogLevel level, const char* tag, const char* message, uint64_t timestamp = 0)
-    {
-        logger.log(level, tag, message, timestamp);
-    }
+/**
+ * @brief Log a printf-style formatted message via a Tag*.
+ *
+ * Only handlers subscribed to tag will be invoked.
+ *
+ * @param level   Severity level of this message
+ * @param tag     Pointer to a static Tag instance
+ * @param format  printf-style format string
+ * @param ...     Format arguments
+ */
+inline void logf(
+    LogLevel     level,
+    const Tag*   tag,
+    const char*  format,
+    ...)
+{
+    char buffer[256];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
 
-    /**
-     * @brief Logs a formatted message using printf-style syntax.
-     *
-     * @param level Severity level
-     * @param tag Subsystem/component tag
-     * @param format printf-style format string
-     * @param ... Format arguments
-     */
-    inline void logf(LogLevel level, const char* tag, const char* format, ...)
-    {
-        char buffer[256];
-
-        va_list args;
-        va_start(args, format);
-        vsnprintf(buffer, sizeof(buffer), format, args);
-        va_end(args);
-
-        logger.log(level, tag, buffer);
-    }
-
-    /**
-     * @brief Logs a message with safety mode control (Fast or Copy).
-     *
-     * @param mode LogSafety::Fast or LogSafety::Copy
-     * @param level Severity level
-     * @param tag Subsystem/component tag
-     * @param message Preformatted log message
-     * @param timestamp Optional timestamp
-     */
-    inline void log(LogSafety mode, LogLevel level, const char* tag, const char* message, uint64_t timestamp = 0)
-    {
-        logger.log(mode, level, tag, message, timestamp);
-    }
+    logger.log(level, tag, buffer);
+}
 
 } // namespace LogAnywhere

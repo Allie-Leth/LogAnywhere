@@ -2,142 +2,121 @@
 
 /**
  * @file Logger.h
- * @brief Defines the Logger class for routing log messages to registered handlers.
+ * @brief Defines the Logger class for dispatching Tag*-based log messages.
  *
- * Logger formats messages, applies timestamps, and dispatches them to handlers managed elsewhere.
- * Logger does not own or manage handlers; it only routes to them.
+ * Version 1.1.0 removes legacy string/tagFilter dispatch paths.
  */
 
 #include "LogMessage.h"
 #include "LogLevel.h"
-#include "HandlerEntry.h"
+#include "Tag.h"
 #include "HandlerManager.h"
 #include <cstdint>
 #include <cstdarg>
 #include <cstdio>
-#include <cstring> // For strdup
-#include <cstdlib> // For free
 
-namespace LogAnywhere
-{
-    /**
-     * @brief Safety mode for controlling how log data is handled.
-     */
-    enum class LogSafety
-    {
-        Fast, ///< Zero-copy, not safe for async use
-        Copy  ///< Deep copy of strings, safe for queuing and async
-    };
+namespace LogAnywhere {
+
+/**
+ * @brief Controls how timestamp data is obtained.
+ */
+enum class LogSafety {
+    Fast, ///< Zero-copy, not safe for async use
+    Copy  ///< Deep copy of strings, safe for queuing and async
+};
+
+/**
+ * @brief Central dispatcher that routes messages to Tag* subscribers.
+ *
+ * Logger does not own handlers; it simply asks the HandlerManager for its
+ * Tag*→HandlerEntry lists and invokes each callback.
+ */
+class Logger {
+public:
+    using TimestampFn = uint64_t(*)();
 
     /**
-     * @brief Central log dispatcher.
+     * @brief Constructs a Logger bound to a HandlerManager.
      *
-     * Logger receives log messages and routes them to all handlers
-     * registered inside the provided HandlerManager.
+     * @param manager Pointer to the HandlerManager instance
      */
-    class Logger
+    explicit Logger(const HandlerManager* manager)
+      : handlerManager(manager), timestampProvider(nullptr), logSequence(1)
+    {}
+
+    /**
+     * @brief Installs a custom timestamp provider function.
+     *
+     * If set, this function is called whenever a log timestamp of zero is
+     * passed in.  Otherwise, an internal sequence counter is used.
+     *
+     * @param fn Function returning a uint64_t timestamp
+     */
+    void setTimestampProvider(TimestampFn fn) {
+        timestampProvider = fn;
+    }
+
+    /**
+     * @brief Logs a preformatted message via a Tag* subscription.
+     *
+     * Only handlers that registered for tag will be invoked, and only
+     * if level >= their minimum threshold.
+     *
+     * @param level     Severity level of this message
+     * @param tag       Tag* to dispatch against
+     * @param message   Preformatted C-string message
+     * @param timestamp Optional timestamp (0 ⇒ auto-generated)
+     */
+    void log(LogLevel level,
+             const Tag* tag,
+             const char* message,
+             uint64_t timestamp = 0) const
     {
-    public:
-        using TimestampFn = uint64_t (*)();
+        if (!handlerManager) return;
 
-        /**
-         * @brief Constructs a Logger with an associated HandlerManager.
-         *
-         * @param manager Pointer to the HandlerManager to use for dispatching logs.
-         */
-        explicit Logger(const HandlerManager* manager)
-            : handlerManager(manager), timestampProvider(nullptr), logSequence(1) {}
+        // choose timestamp
+        uint64_t ts = (timestamp != 0)
+          ? timestamp
+          : (timestampProvider ? timestampProvider() : logSequence++);
 
-        /**
-         * @brief Sets a custom timestamp provider function.
-         *
-         * @param fn Pointer to a timestamp function returning uint64_t
-         */
-        void setTimestampProvider(TimestampFn fn)
-        {
-            timestampProvider = fn;
+        LogMessage msg{ level, tag->name, message, ts };
+
+        // fast path: only subscribers of this Tag*
+        for (size_t i = 0; i < tag->handlerCount; ++i) {
+            const HandlerEntry* e = tag->handlers[i];
+            if (!e->isEnabled())                       continue;
+            if (static_cast<uint8_t>(level) < 
+                static_cast<uint8_t>(e->level))       continue;
+            e->handler(msg, e->context);
         }
+    }
 
-        /**
-         * @brief Logs a preformatted message.
-         *
-         * @param level     Severity level
-         * @param tag       Subsystem/component name
-         * @param message   Formatted log message
-         * @param timestamp Optional timestamp; if 0, uses timestamp provider or sequence counter
-         */
-        void log(LogLevel level, const char* tag, const char* message, uint64_t timestamp = 0) const
-        {
-            if (!handlerManager)
-                return;
+    /**
+     * @brief Logs a printf-style formatted message via a Tag*.
+     *
+     * Formats into a fixed 256-byte buffer, then dispatches exactly as `log()`.
+     *
+     * @param level  Severity level of this message
+     * @param tag    Tag* to dispatch against
+     * @param fmt    printf-style format string
+     * @param ...    Format arguments
+     */
+    void logf(LogLevel level,
+              const Tag* tag,
+              const char* fmt, ...) const
+    {
+        char buffer[256];
+        va_list args;
+        va_start(args, fmt);
+        vsnprintf(buffer, sizeof(buffer), fmt, args);
+        va_end(args);
+        log(level, tag, buffer);
+    }
 
-            uint64_t ts = (timestamp != 0)
-                        ? timestamp
-                        : (timestampProvider ? timestampProvider() : logSequence++);
-
-            LogMessage msg{level, tag, message, ts};
-
-            size_t count = 0;
-            const HandlerEntry* handlers = handlerManager->listHandlers(count);
-
-            for (size_t i = 0; i < count; ++i)
-            {
-                const HandlerEntry& entry = handlers[i];
-
-                // Severity filter
-                if (static_cast<uint8_t>(level) < static_cast<uint8_t>(entry.level))
-                    continue;
-
-                // Tag filter if provided
-                if (entry.tagFilter && !entry.tagFilter(tag, entry.filterContext))
-                    continue;
-
-                // Dispatch
-                entry.handler(msg, entry.context);
-            }
-        }
-
-        /**
-         * @brief Logs a formatted message using printf-style syntax.
-         */
-        void logf(LogLevel level, const char* tag, const char* format, ...) const
-        {
-            char buffer[256];
-
-            va_list args;
-            va_start(args, format);
-            vsnprintf(buffer, sizeof(buffer), format, args);
-            va_end(args);
-
-            log(level, tag, buffer);
-        }
-
-        /**
-         * @brief Logs a message safely for asynchronous handlers.
-         *
-         * Deep copies strings for memory safety.
-         */
-        void log(LogSafety mode, LogLevel level, const char* tag, const char* message, uint64_t timestamp = 0) const
-        {
-            if (mode == LogSafety::Fast)
-            {
-                log(level, tag, message, timestamp);
-                return;
-            }
-
-            char* tagCopy = strdup(tag);
-            char* msgCopy = strdup(message);
-
-            log(level, tagCopy, msgCopy, timestamp);
-
-            free(tagCopy);
-            free(msgCopy);
-        }
-
-    private:
-        const HandlerManager* handlerManager; ///< Pointer to external HandlerManager
-        TimestampFn timestampProvider;        ///< Optional timestamp provider
-        mutable uint64_t logSequence;          ///< Fallback sequence counter (mutable to allow const methods)
-    };
+private:
+    const HandlerManager* handlerManager;  ///< Where to look up handlers
+    TimestampFn          timestampProvider;///< User-supplied timestamp fn
+    mutable uint64_t     logSequence;      ///< Fallback auto-increment counter
+};
 
 } // namespace LogAnywhere

@@ -2,91 +2,147 @@
 
 /**
  * @file HandlerManager.h
- * @brief Manages the registration, unregistration, and storage of log handlers.
+ * @brief Manages registration and removal of log handlers by Tag* subscriptions.
  *
- * This class is responsible for maintaining an internal list of registered
- * log handlers and their metadata. It supports severity filtering, optional
- * tag-based filtering, and optional handler naming.
+ * Provides:
+ *  - Fast, exact‐match registration via Tag* pointers
+ *  - Full removal (pruning from Tag subscriber lists and compacting registry)
+ *  - Clearing all handlers and resetting IDs
+ *  - Listing current handlers
  *
- * It does not perform logging — only data storage and handler lookup.
+ * Does not perform dispatch; that is done by Logger.
  */
 
 #include "HandlerEntry.h"
+#include "Tag.h"
 #include "LogLevel.h"
 #include <cstdint>
-#include <cstring> // For strcmp
+#include <cstddef>
+#include <cstring> // for std::strcmp
 
+// Increasing the max handlers will increase memory usage - 
+// each one has a list of all tags, so increasing both gets dangerous
 #ifndef LOGANYWHERE_MAX_HANDLERS
-#define LOGANYWHERE_MAX_HANDLERS 512 // Default maximum number of handlers - can be overridden, this is purely for length of list to avoid dynamic lists.
+#define LOGANYWHERE_MAX_HANDLERS 6
 #endif
 
 namespace LogAnywhere
 {
 
+    /**
+     * @brief Stores and manages all registered HandlerEntry instances.
+     */
     class HandlerManager
     {
     public:
         /**
-         * @brief Constructs an empty HandlerManager with no handlers.
+         * @brief Constructs an empty HandlerManager.
+         *
+         * IDs will start at 1 for the first registered handler.
          */
         HandlerManager()
-            : handlerCount(0), nextHandlerId(1) {}
+            : handlerCount(0),
+              nextHandlerId(1)
+        {
+        }
 
         /**
          * @brief Clears all registered handlers and resets the ID counter.
          *
-         * After calling this, no handlers are registered and IDs start from 1 again.
+         * After this call, no handlers remain registered. New registrations
+         * will begin again at ID = 1.
          */
         void clearHandlers()
         {
-            // Reset all handler entries to a default state (zero out pointers, IDs, etc.)
+            // NOTE: Tag subscriber lists are not automatically cleared.
             std::memset(handlers, 0, sizeof(handlers));
             handlerCount = 0;
             nextHandlerId = 1;
         }
 
         /**
-         * @brief Registers a new log handler.
+         * @brief Registers a handler for an explicit list of Tag* subscriptions.
          *
-         * Registers a handler with optional context, tag filter, name, and
-         * filter context. If the tag filter is provided, the handler will only
-         * be invoked for messages where the filter returns true.
+         * When a log is emitted via one of the Tag* in tagList, this handler
+         * will be invoked (provided its severity threshold is met).
          *
-         * @param level         Minimum severity level to invoke the handler
-         * @param handler       Function pointer to the handler
-         * @param context       Optional context passed to the handler
-         * @param tagFilter     Optional tag filter function (default: nullptr)
-         * @param name          Optional human-readable name (default: nullptr)
-         * @param filterContext Optional context for the tag filter function (default: nullptr)
-         * @return true if handler was successfully registered, false if handler limit was exceeded
+         * @param level     Minimum log level to invoke this handler.
+         * @param fn        Callback function pointer.
+         * @param ctx       User-supplied context passed to the callback.
+         * @param tagList   Array of Tag* that this handler subscribes to.
+         * @param tagCount  Number of elements in  tagList.
+         * @param name      Optional handler name for diagnostics or removal.
+         * @return true if registration succeeded, false if capacity is exceeded.
          */
-        bool registerHandler(
+        bool registerHandlerForTags(
             LogLevel level,
-            LogHandler handler,
-            void *context = nullptr,
-            TagFilterFn tagFilter = nullptr,
-            const char *name = nullptr,
-            void *filterContext = nullptr)
+            LogHandler fn,
+            void *ctx,
+            const Tag **tagList,
+            size_t tagCount,
+            const char *name = nullptr)
         {
             if (handlerCount >= LOGANYWHERE_MAX_HANDLERS)
                 return false;
 
-            handlers[handlerCount++] = HandlerEntry(nextHandlerId++, name, level, handler, context, tagFilter, filterContext);
+            // Create the entry
+            handlers[handlerCount] = HandlerEntry(
+                nextHandlerId++, // id
+                name,            // name
+                level,           // severity
+                fn,              // handler fn
+                ctx,             // user context
+                tagList,         // Tag* list
+                tagCount,        // number of tags
+                true             // enabled
+            );
+
+            // Grab its pointer for subscription
+            HandlerEntry *entry = &handlers[handlerCount++];
+
+            // Subscribe into each Tag's handler array
+            for (size_t i = 0; i < tagCount; ++i)
+            {
+                Tag *t = const_cast<Tag *>(tagList[i]);
+                if (t->handlerCount < MAX_TAG_SUBSCRIPTIONS)
+                {
+                    t->handlers[t->handlerCount++] = entry;
+                }
+            }
+
             return true;
         }
 
         /**
-         * @brief Unregisters a handler by its unique numeric ID.
+         * @brief Deletes (fully removes) a handler by its unique ID.
          *
-         * @param id The unique ID of the handler to remove
-         * @return true if the handler was found and removed, false if not found
+         * This expensive operation:
+         *  1) Prunes the handler from every Tag::handlers[] it subscribed to.
+         *  2) Removes it from the internal registry (compact array).
+         *
+         * @param id  Unique ID of the handler to remove.
+         * @return true if found and deleted; false otherwise.
          */
-        bool unregisterHandlerByID(uint16_t id)
+        bool deleteHandlerByID(uint16_t id)
         {
             for (size_t i = 0; i < handlerCount; ++i)
             {
                 if (handlers[i].id == id)
                 {
+                    // Prune from each Tag's subscriber list
+                    HandlerEntry &e = handlers[i];
+                    for (size_t t = 0; t < e.tagCount; ++t)
+                    {
+                        Tag *tag = const_cast<Tag *>(e.tagList[t]);
+                        size_t w = 0;
+                        for (size_t r = 0; r < tag->handlerCount; ++r)
+                        {
+                            if (tag->handlers[r]->id != id)
+                                tag->handlers[w++] = tag->handlers[r];
+                        }
+                        tag->handlerCount = w;
+                    }
+                    // Compact the registry
                     shiftHandlersDown(i);
                     return true;
                 }
@@ -95,17 +151,36 @@ namespace LogAnywhere
         }
 
         /**
-         * @brief Unregisters a handler by its assigned name.
+         * @brief Deletes (fully removes) a handler by its name.
          *
-         * @param name The name of the handler to remove
-         * @return true if the handler was found and removed, false otherwise
+         * Same expensive semantics as deleteHandlerByID().
+         *
+         * @param name  Name of the handler to remove.
+         * @return true if found and deleted; false otherwise.
          */
-        bool unregisterHandlerByName(const char *name)
+        bool deleteHandlerByName(const char *name)
         {
             for (size_t i = 0; i < handlerCount; ++i)
             {
-                if (handlers[i].name && strcmp(handlers[i].name, name) == 0)
+                if (handlers[i].name && std::strcmp(handlers[i].name, name) == 0)
                 {
+                    // Prune from Tags
+                    HandlerEntry &e = handlers[i];
+                    for (size_t t = 0; t < e.tagCount; ++t)
+                    {
+                        Tag *tag = const_cast<Tag *>(e.tagList[t]);
+                        size_t w = 0;
+                        for (size_t r = 0; r < tag->handlerCount; ++r)
+                        {
+                            if (!(tag->handlers[r]->name &&
+                                  std::strcmp(tag->handlers[r]->name, name) == 0))
+                            {
+                                tag->handlers[w++] = tag->handlers[r];
+                            }
+                        }
+                        tag->handlerCount = w;
+                    }
+                    // Compact registry
                     shiftHandlersDown(i);
                     return true;
                 }
@@ -114,14 +189,10 @@ namespace LogAnywhere
         }
 
         /**
-         * @brief Lists all currently registered handlers.
+         * @brief Lists all registered handlers (enabled or disabled).
          *
-         * Returns a pointer to the internal handler array. The caller should use the count
-         * to avoid accessing uninitialized slots. This array is owned by HandlerManager;
-         * do not modify or free it.
-         *
-         * @param outCount [out] Populated with the number of registered handlers
-         * @return Pointer to the internal handler array
+         * @param outCount  Populated with the number of handlers in the array.
+         * @return Pointer to the internal HandlerEntry array.
          */
         const HandlerEntry *listHandlers(size_t &outCount) const
         {
@@ -130,23 +201,19 @@ namespace LogAnywhere
         }
 
     private:
-        HandlerEntry handlers[LOGANYWHERE_MAX_HANDLERS]; ///< Internal array of registered handlers
-        size_t handlerCount;                             ///< Number of active handlers
-        uint16_t nextHandlerId;                          ///< Next unique handler ID to assign
+        HandlerEntry handlers[LOGANYWHERE_MAX_HANDLERS]; ///< Storage of all handlers
+        size_t handlerCount;                             ///< Number of active entries
+        uint16_t nextHandlerId;                          ///< Next ID to assign
 
         /**
-         * @brief Shifts remaining handlers down to fill a removed slot.
+         * @brief Removes the entry at @p index from the registry and compacts.
          *
-         * Used internally by unregister methods to maintain contiguous array.
-         *
-         * @param fromIndex Index of the removed element
+         * @param index  Index of handler to remove.
          */
-        void shiftHandlersDown(size_t fromIndex)
+        void shiftHandlersDown(size_t index)
         {
-            for (size_t j = fromIndex; j < handlerCount - 1; ++j)
-            {
+            for (size_t j = index; j + 1 < handlerCount; ++j)
                 handlers[j] = handlers[j + 1];
-            }
             --handlerCount;
         }
     };
