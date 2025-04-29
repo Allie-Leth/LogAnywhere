@@ -54,4 +54,5 @@ Desktop.ini
 # === CMake ===
 *.cmake
 CMakeCache.txt
-CMakeLists.txt
+
+/Obsidian
