@@ -2,15 +2,16 @@
 
 /**
  * @file HandlerManager.h
- * @brief Manages registration and removal of log handlers by Tag* subscriptions.
+ * @brief Manages registration, lookup, and removal of log handlers by Tag* subscriptions.
  *
- * Provides:
+ * HandlerManager stores up to LOGANYWHERE_MAX_HANDLERS HandlerEntry instances,
+ * each of which may subscribe to a fixed list of Tag* pointers.  It supports:
  *  - Fast, exact‐match registration via Tag* pointers
  *  - Full removal (pruning from Tag subscriber lists and compacting registry)
  *  - Clearing all handlers and resetting IDs
  *  - Listing current handlers
  *
- * Does not perform dispatch; that is done by Logger.
+ * Dispatching is performed by Logger, not by this class.
  */
 
 #include "HandlerEntry.h"
@@ -19,9 +20,8 @@
 #include <cstdint>
 #include <cstddef>
 #include <cstring> // for std::strcmp
+#include <cstring> // for std::memset
 
-// Increasing the max handlers will increase memory usage - 
-// each one has a list of all tags, so increasing both gets dangerous
 #ifndef LOGANYWHERE_MAX_HANDLERS
 #define LOGANYWHERE_MAX_HANDLERS 6
 #endif
@@ -51,13 +51,26 @@ namespace LogAnywhere
          *
          * After this call, no handlers remain registered. New registrations
          * will begin again at ID = 1.
+         *
+         * @note Tag subscriber lists are _not_ automatically cleared.
          */
         void clearHandlers()
         {
-            // NOTE: Tag subscriber lists are not automatically cleared.
             std::memset(handlers, 0, sizeof(handlers));
             handlerCount = 0;
             nextHandlerId = 1;
+        }
+
+        /**
+         * @brief Lists all registered handlers (enabled or disabled).
+         *
+         * @param outCount Populated with the number of handlers in the array.
+         * @return Pointer to the internal HandlerEntry array.
+         */
+        const HandlerEntry *listHandlers(size_t &outCount) const
+        {
+            outCount = handlerCount;
+            return handlers;
         }
 
         /**
@@ -70,48 +83,16 @@ namespace LogAnywhere
          * @param fn        Callback function pointer.
          * @param ctx       User-supplied context passed to the callback.
          * @param tagList   Array of Tag* that this handler subscribes to.
-         * @param tagCount  Number of elements in  tagList.
+         * @param tagCount  Number of elements in tagList.
          * @param name      Optional handler name for diagnostics or removal.
          * @return true if registration succeeded, false if capacity is exceeded.
          */
-        bool registerHandlerForTags(
-            LogLevel level,
-            LogHandler fn,
-            void *ctx,
-            const Tag **tagList,
-            size_t tagCount,
-            const char *name = nullptr)
-        {
-            if (handlerCount >= LOGANYWHERE_MAX_HANDLERS)
-                return false;
-
-            // Create the entry
-            handlers[handlerCount] = HandlerEntry(
-                nextHandlerId++, // id
-                name,            // name
-                level,           // severity
-                fn,              // handler fn
-                ctx,             // user context
-                tagList,         // Tag* list
-                tagCount,        // number of tags
-                true             // enabled
-            );
-
-            // Grab its pointer for subscription
-            HandlerEntry *entry = &handlers[handlerCount++];
-
-            // Subscribe into each Tag's handler array
-            for (size_t i = 0; i < tagCount; ++i)
-            {
-                Tag *t = const_cast<Tag *>(tagList[i]);
-                if (t->handlerCount < MAX_TAG_SUBSCRIPTIONS)
-                {
-                    t->handlers[t->handlerCount++] = entry;
-                }
-            }
-
-            return true;
-        }
+        bool registerHandlerForTags(LogLevel level,
+                                    LogHandler fn,
+                                    void *ctx,
+                                    const Tag *tagList[],
+                                    size_t tagCount,
+                                    const char *name = nullptr);
 
         /**
          * @brief Deletes (fully removes) a handler by its unique ID.
@@ -120,102 +101,297 @@ namespace LogAnywhere
          *  1) Prunes the handler from every Tag::handlers[] it subscribed to.
          *  2) Removes it from the internal registry (compact array).
          *
-         * @param id  Unique ID of the handler to remove.
+         * @param id Unique ID of the handler to remove.
          * @return true if found and deleted; false otherwise.
          */
-        bool deleteHandlerByID(uint16_t id)
-        {
-            for (size_t i = 0; i < handlerCount; ++i)
-            {
-                if (handlers[i].id == id)
-                {
-                    // Prune from each Tag's subscriber list
-                    HandlerEntry &e = handlers[i];
-                    for (size_t t = 0; t < e.tagCount; ++t)
-                    {
-                        Tag *tag = const_cast<Tag *>(e.tagList[t]);
-                        size_t w = 0;
-                        for (size_t r = 0; r < tag->handlerCount; ++r)
-                        {
-                            if (tag->handlers[r]->id != id)
-                                tag->handlers[w++] = tag->handlers[r];
-                        }
-                        tag->handlerCount = w;
-                    }
-                    // Compact the registry
-                    shiftHandlersDown(i);
-                    return true;
-                }
-            }
-            return false;
-        }
+        bool deleteHandlerByID(uint16_t id);
 
         /**
          * @brief Deletes (fully removes) a handler by its name.
          *
          * Same expensive semantics as deleteHandlerByID().
          *
-         * @param name  Name of the handler to remove.
+         * @param name Name of the handler to remove.
          * @return true if found and deleted; false otherwise.
          */
-        bool deleteHandlerByName(const char *name)
-        {
-            for (size_t i = 0; i < handlerCount; ++i)
-            {
-                if (handlers[i].name && std::strcmp(handlers[i].name, name) == 0)
-                {
-                    // Prune from Tags
-                    HandlerEntry &e = handlers[i];
-                    for (size_t t = 0; t < e.tagCount; ++t)
-                    {
-                        Tag *tag = const_cast<Tag *>(e.tagList[t]);
-                        size_t w = 0;
-                        for (size_t r = 0; r < tag->handlerCount; ++r)
-                        {
-                            if (!(tag->handlers[r]->name &&
-                                  std::strcmp(tag->handlers[r]->name, name) == 0))
-                            {
-                                tag->handlers[w++] = tag->handlers[r];
-                            }
-                        }
-                        tag->handlerCount = w;
-                    }
-                    // Compact registry
-                    shiftHandlersDown(i);
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        /**
-         * @brief Lists all registered handlers (enabled or disabled).
-         *
-         * @param outCount  Populated with the number of handlers in the array.
-         * @return Pointer to the internal HandlerEntry array.
-         */
-        const HandlerEntry *listHandlers(size_t &outCount) const
-        {
-            outCount = handlerCount;
-            return handlers;
-        }
+        bool deleteHandlerByName(const char *name);
 
     private:
-        HandlerEntry handlers[LOGANYWHERE_MAX_HANDLERS]; ///< Storage of all handlers
-        size_t handlerCount;                             ///< Number of active entries
-        uint16_t nextHandlerId;                          ///< Next ID to assign
+        static constexpr size_t MAX_HANDLERS = LOGANYWHERE_MAX_HANDLERS; ///< Capacity of handlers[]
+        HandlerEntry handlers[MAX_HANDLERS];                             ///< Storage of all handlers
+        size_t handlerCount;                                             ///< Number of active entries
+        uint16_t nextHandlerId;                                          ///< Next ID to assign
+
+        // --------------------------------------------------------------------
+        // Single‐purpose helper methods (declared here, defined below)
+        // --------------------------------------------------------------------
 
         /**
-         * @brief Removes the entry at @p index from the registry and compacts.
-         *
-         * @param index  Index of handler to remove.
+         * @brief Checks if there's capacity for another handler.
+         * @return true if handlerCount < MAX_HANDLERS.
          */
-        void shiftHandlersDown(size_t index)
-        {
-            for (size_t j = index; j + 1 < handlerCount; ++j)
-                handlers[j] = handlers[j + 1];
-            --handlerCount;
-        }
+        bool hasCapacity() const;
+
+        /**
+         * @brief Constructs a new HandlerEntry in handlers[] and increments count.
+         * @param level     Severity threshold.
+         * @param fn        Callback function.
+         * @param ctx       User context.
+         * @param tagList   Tags to subscribe to.
+         * @param tagCount  Number of tags.
+         * @param name      Optional name.
+         * @return Reference to the newly created HandlerEntry.
+         */
+        HandlerEntry &createEntry(LogLevel level,
+                                  LogHandler fn,
+                                  void *ctx,
+                                  const Tag *tagList[],
+                                  size_t tagCount,
+                                  const char *name);
+
+        /**
+         * @brief Subscribes a HandlerEntry to each Tag in tagList.
+         * @param entry     The HandlerEntry to subscribe.
+         * @param tagList   Array of Tag* pointers.
+         * @param tagCount  Number of tags to subscribe to.
+         */
+        void subscribeEntryToTags(HandlerEntry *entry,
+                                  const Tag *tagList[],
+                                  size_t tagCount);
+
+        /**
+         * @brief Finds a handler entry by its ID.
+         * @param id Unique handler ID.
+         * @return Pointer to the HandlerEntry or nullptr if not found.
+         */
+        HandlerEntry *findEntryByID(uint16_t id);
+
+        /**
+         * @brief Finds a handler entry by its name.
+         * @param name Handler name to search.
+         * @return Pointer to the HandlerEntry or nullptr if not found.
+         */
+        HandlerEntry *findEntryByName(const char *name);
+
+        /**
+         * @brief Unsubscribes a HandlerEntry from all Tags it was on.
+         * @param entry The HandlerEntry to remove from tags.
+         */
+        void unsubscribeEntryFromTags(HandlerEntry *entry);
+
+        /**
+         * @brief Compacts out the slot at index in handlers[].
+         * After this, handlerCount is decremented.
+         * @param index Index of the slot to remove.
+         */
+        void compactHandlerArray(size_t index);
     };
 
-} // namespace LogAnywhere
+    // ──────────────────────────────────────────────────────────────────────────────
+    // Inline definitions of the helper and API methods
+    // ──────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * @brief Checks if there is room for another handler.
+     *
+     * @return true if the current number of handlers is less than the maximum allowed.
+     */
+    inline bool HandlerManager::hasCapacity() const
+    {
+        return handlerCount < MAX_HANDLERS;
+    }
+
+    /**
+     * @brief Constructs a new HandlerEntry in the internal array.
+     *
+     * Creates a HandlerEntry with the given parameters at the next free slot,
+     * assigns it a unique ID, and increments the handler count.
+     *
+     * @param level     Minimum log level threshold for this handler.
+     * @param fn        Callback function pointer to invoke on log dispatch.
+     * @param ctx       User-supplied context passed to the callback.
+     * @param tagList   Array of Tag* pointers this handler should subscribe to.
+     * @param tagCount  Number of tags in @p tagList.
+     * @param name      Optional human-readable name for diagnostics or removal.
+     * @return Reference to the newly created HandlerEntry.
+     */
+    inline HandlerEntry &HandlerManager::createEntry(LogLevel level,
+                                                     LogHandler fn,
+                                                     void *ctx,
+                                                     const Tag *tagList[],
+                                                     size_t tagCount,
+                                                     const char *name)
+    {
+        HandlerEntry &e = handlers[handlerCount];
+        e = HandlerEntry(nextHandlerId++, name, level, fn, ctx, tagList, tagCount, true);
+        return handlers[handlerCount++];
+    }
+
+    /**
+     * @brief Subscribes a HandlerEntry to each Tag in the provided list.
+     *
+     * For each tag in @p tagList, if there is capacity, appends the
+     * @p entry pointer into that Tag's subscriber array.
+     *
+     * @param entry     Pointer to the HandlerEntry to subscribe.
+     * @param tagList   Array of Tag* pointers to subscribe to.
+     * @param tagCount  Number of tags in @p tagList.
+     */
+    inline void HandlerManager::subscribeEntryToTags(HandlerEntry *entry,
+                                                     const Tag *tagList[],
+                                                     size_t tagCount)
+    {
+        for (size_t i = 0; i < tagCount; ++i)
+        {
+            Tag *t = const_cast<Tag *>(tagList[i]);
+            if (t->handlerCount < MAX_TAG_SUBSCRIPTIONS)
+            {
+                t->handlers[t->handlerCount++] = entry;
+            }
+        }
+    }
+
+    /**
+     * @brief Finds a registered handler by its unique ID.
+     *
+     * Iterates through the internal handler array and returns a pointer
+     * to the entry whose ID matches @p id.
+     *
+     * @param id Unique identifier of the handler.
+     * @return Pointer to the HandlerEntry if found, nullptr otherwise.
+     */
+    inline HandlerEntry *HandlerManager::findEntryByID(uint16_t id)
+    {
+        for (size_t i = 0; i < handlerCount; ++i)
+        {
+            if (handlers[i].id == id)
+                return &handlers[i];
+        }
+        return nullptr;
+    }
+
+    /**
+     * @brief Finds a registered handler by its assigned name.
+     *
+     * Iterates through the internal handler array and returns a pointer
+     * to the entry whose name matches @p name.
+     *
+     * @param name Null-terminated string name of the handler.
+     * @return Pointer to the HandlerEntry if found, nullptr otherwise.
+     */
+    inline HandlerEntry *HandlerManager::findEntryByName(const char *name)
+    {
+        for (size_t i = 0; i < handlerCount; ++i)
+        {
+            if (handlers[i].name && std::strcmp(handlers[i].name, name) == 0)
+                return &handlers[i];
+        }
+        return nullptr;
+    }
+
+    /**
+     * @brief Unsubscribes a HandlerEntry from all Tags it was registered to.
+     *
+     * For each Tag in the entry’s tagList, removes the entry pointer from
+     * the Tag’s handlers array and compacts the array to close gaps.
+     *
+     * @param entry Pointer to the HandlerEntry to remove from all tags.
+     */
+    inline void HandlerManager::unsubscribeEntryFromTags(HandlerEntry *entry)
+    {
+        for (size_t t = 0; t < entry->tagCount; ++t)
+        {
+            Tag *tag = const_cast<Tag *>(entry->tagList[t]);
+            size_t wr = 0;
+            for (size_t rd = 0; rd < tag->handlerCount; ++rd)
+            {
+                if (tag->handlers[rd] != entry)
+                    tag->handlers[wr++] = tag->handlers[rd];
+            }
+            tag->handlerCount = wr;
+        }
+    }
+
+    /**
+     * @brief Removes a handler slot from the internal array by index.
+     *
+     * Shifts all entries after @p index one position left to fill the gap,
+     * then decrements the handler count.
+     *
+     * @param index Index of the handler slot to remove.
+     */
+    inline void HandlerManager::compactHandlerArray(size_t index)
+    {
+        for (size_t i = index + 1; i < handlerCount; ++i)
+        {
+            handlers[i - 1] = handlers[i];
+        }
+        --handlerCount;
+    }
+
+    /**
+     * @brief Registers a handler for a list of Tag* subscriptions (inlined).
+     *
+     * Convenience wrapper that checks capacity, creates the entry,
+     * and subscribes it to the provided tags.
+     *
+     * @param level     Minimum log level threshold for this handler.
+     * @param fn        Callback function pointer to invoke on log dispatch.
+     * @param ctx       User-supplied context passed to the callback.
+     * @param tagList   Array of Tag* pointers this handler should subscribe to.
+     * @param tagCount  Number of tags in @p tagList.
+     * @param name      Optional human-readable name for diagnostics or removal.
+     * @return true if registration succeeded, false if capacity is exceeded.
+     */
+    inline bool HandlerManager::registerHandlerForTags(LogLevel level,
+                                                       LogHandler fn,
+                                                       void *ctx,
+                                                       const Tag *tagList[],
+                                                       size_t tagCount,
+                                                       const char *name)
+    {
+        if (!hasCapacity())
+            return false;
+        auto &entry = createEntry(level, fn, ctx, tagList, tagCount, name);
+        subscribeEntryToTags(&entry, tagList, tagCount);
+        return true;
+    }
+
+    /**
+     * @brief Deletes (removes) a handler by its unique ID (inlined).
+     *
+     * Finds the entry by ID, unsubscribes it from all Tags, and compacts
+     * the internal handler array.
+     *
+     * @param id Unique identifier of the handler to delete.
+     * @return true if the handler was found and deleted; false otherwise.
+     */
+    inline bool HandlerManager::deleteHandlerByID(uint16_t id)
+    {
+        auto *e = findEntryByID(id);
+        if (!e)
+            return false;
+        unsubscribeEntryFromTags(e);
+        compactHandlerArray(static_cast<size_t>(e - handlers));
+        return true;
+    }
+
+    /**
+     * @brief Deletes (removes) a handler by its name (inlined).
+     *
+     * Finds the entry by name, unsubscribes it from all Tags, and compacts
+     * the internal handler array.
+     *
+     * @param name Name of the handler to delete.
+     * @return true if the handler was found and deleted; false otherwise.
+     */
+    inline bool HandlerManager::deleteHandlerByName(const char *name)
+    {
+        auto *e = findEntryByName(name);
+        if (!e)
+            return false;
+        unsubscribeEntryFromTags(e);
+        compactHandlerArray(static_cast<size_t>(e - handlers));
+        return true;
+    }
+}; // namespace LogAnywhere
