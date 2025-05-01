@@ -19,6 +19,12 @@ static Tag TAG_ASYNC      ("ASYNC");
 static Tag TAG_TEST       ("TEST");
 static Tag TAG_MATCH      ("MATCH");
 static Tag TAG_NO_MATCH   ("NO_MATCH");
+static Tag TAG_OTHER("OTHER");
+
+static void countingHandler(const LogMessage& msg, void* ctx) {
+    auto* count = static_cast<int*>(ctx);
+    ++(*count);
+}
 
 // A no-op handler for registration
 static void dummyHandler(const LogMessage&, void*) {}
@@ -315,4 +321,199 @@ TEST_CASE("Handler lookup by name", "[Handler][Find][Name]") {
     REQUIRE(found);
 
     clearAndVerify(); // Cleanup
+}
+
+TEST_CASE("HandlerManager initial state and listHandlers", "[HandlerManager]") {
+    HandlerManager mgr;
+    size_t count = 999;
+    const HandlerEntry* entries = mgr.listHandlers(count);
+    REQUIRE(count == 0);
+    REQUIRE(entries != nullptr);
+}
+
+TEST_CASE("registerHandlerForTags increases registry and tag subscriptions", "[HandlerManager]") {
+    HandlerManager mgr;
+    std::string ctx;
+    static Tag T1("T1");
+    static Tag T2("T2");
+    const Tag* tags[] = { &T1, &T2 };
+
+    bool ok = mgr.registerHandlerForTags(
+        LogLevel::DEBUG,
+        [](const LogMessage&, void*){},
+        &ctx,
+        tags, 2,
+        "Test"
+    );
+    REQUIRE(ok);
+
+    size_t count = 0;
+    const HandlerEntry* entries = mgr.listHandlers(count);
+    REQUIRE(count == 1);
+    REQUIRE(std::string(entries[0].name) == "Test");
+    
+    // Both tags should have one subscriber
+    REQUIRE(T1.handlerCount == 1);
+    REQUIRE(T2.handlerCount == 1);
+}
+
+TEST_CASE("clearHandlers resets registry and does not touch tags", "[HandlerManager]") {
+    HandlerManager mgr;
+    std::string ctx;
+    static Tag T("X");
+    const Tag* tags[] = { &T };
+
+    mgr.registerHandlerForTags(LogLevel::INFO,
+        [](const LogMessage&, void*){}, &ctx, tags, 1, nullptr);
+    REQUIRE(T.handlerCount == 1);
+
+    mgr.clearHandlers();
+    size_t count;
+    mgr.listHandlers(count);
+    REQUIRE(count == 0);
+    // Tag still has subscriber list intact (manager does not prune on clear)
+    REQUIRE(T.handlerCount == 1);
+}
+
+TEST_CASE("deleteHandlerByID prunes subscriptions and registry", "[HandlerManager]") {
+    HandlerManager mgr;
+    std::string ctx;
+    static Tag T("TAG");
+    const Tag* tags[] = { &T };
+
+    mgr.registerHandlerForTags(LogLevel::INFO,
+        [](const LogMessage&, void*){}, &ctx, tags, 1, "ToRemove");
+    size_t count;
+    mgr.listHandlers(count);
+    uint16_t id = mgr.listHandlers(count)[0].id;
+    REQUIRE(T.handlerCount == 1);
+
+    bool removed = mgr.deleteHandlerByID(id);
+    REQUIRE(removed);
+    mgr.listHandlers(count);
+    REQUIRE(count == 0);
+    REQUIRE(T.handlerCount == 0);
+}
+
+TEST_CASE("deleteHandlerByName prunes subscriptions and registry", "[HandlerManager]") {
+    HandlerManager mgr;
+    std::string ctx;
+    static Tag T("TAG");
+    const Tag* tags[] = { &T };
+
+    mgr.registerHandlerForTags(LogLevel::WARN,
+        [](const LogMessage&, void*){}, &ctx, tags, 1, "MyName");
+    size_t count;
+    mgr.listHandlers(count);
+    REQUIRE(count == 1);
+    REQUIRE(T.handlerCount == 1);
+
+    bool removed = mgr.deleteHandlerByName("MyName");
+    REQUIRE(removed);
+    mgr.listHandlers(count);
+    REQUIRE(count == 0);
+    REQUIRE(T.handlerCount == 0);
+}
+
+TEST_CASE("deleteHandler* returns false if not found", "[HandlerManager]") {
+    HandlerManager mgr;
+    REQUIRE_FALSE(mgr.deleteHandlerByID(999));
+    REQUIRE_FALSE(mgr.deleteHandlerByName("NoSuch"));
+}
+
+TEST_CASE("deleteHandlerByID removes handler and unsubscribes from Tag", "[HandlerManager][DeleteByID]") {
+    clearHandlers();
+    TAG_DEFAULT.handlerCount = 0;
+    TAG_OTHER.handlerCount   = 0;
+
+    int defaultCount = 0;
+    int otherCount   = 0;
+    const Tag* defaultTags[] = { &TAG_DEFAULT };
+    const Tag* otherTags[]   = { &TAG_OTHER   };
+
+    // Register two handlers
+    REQUIRE(registerHandler(LogLevel::INFO, countingHandler, &defaultCount, defaultTags, 1, "default"));
+    REQUIRE(registerHandler(LogLevel::INFO, countingHandler, &otherCount,   otherTags,   1, "other"));
+
+    // Delete the first handler by its ID
+    size_t count = 0;
+    auto list = handlerManager.listHandlers(count);
+    uint16_t idToDelete = list[0].id;
+    REQUIRE(deleteHandlerByID(idToDelete));
+
+    // Logging to both tags should only invoke second handler
+    log(LogLevel::INFO, &TAG_DEFAULT, "test");
+    log(LogLevel::INFO, &TAG_OTHER,   "test");
+    REQUIRE(defaultCount == 0);
+    REQUIRE(otherCount   == 1);
+
+    // Deleting non-existent ID returns false
+    REQUIRE(!deleteHandlerByID(0xFFFF));
+}
+
+
+TEST_CASE("deleteHandlerByName removes handler by name", "[HandlerManager][DeleteByName]") {
+    clearHandlers();
+    TAG_DEFAULT.handlerCount = 0;
+
+    int count = 0;
+    const Tag* tags[] = { &TAG_DEFAULT };
+
+    REQUIRE(registerHandler(LogLevel::INFO, countingHandler, &count, tags, 1, "to_remove"));
+    REQUIRE(registerHandler(LogLevel::INFO, countingHandler, &count, tags, 1, "keep"));
+
+    REQUIRE(deleteHandlerByName("to_remove"));
+    log(LogLevel::INFO, &TAG_DEFAULT, "hello");
+    REQUIRE(count == 1);
+
+    // Removing again returns false
+    REQUIRE(!deleteHandlerByName("to_remove"));
+}
+
+TEST_CASE("registerHandlerForTags fails when capacity exceeded", "[HandlerManager][Capacity]") {
+    clearHandlers();
+    TAG_DEFAULT.handlerCount = 0;
+
+    const Tag* tags[] = { &TAG_DEFAULT };
+    int dummy = 0;
+
+    // Fill to max
+    for (size_t i = 0; i < LOGANYWHERE_MAX_HANDLERS; ++i) {
+        REQUIRE(registerHandler(LogLevel::INFO, countingHandler, &dummy, tags, 1));
+    }
+    // Next should fail
+    REQUIRE(!registerHandler(LogLevel::INFO, countingHandler, &dummy, tags, 1));
+}
+
+TEST_CASE("handler level threshold filters messages", "[Logger][Level]") {
+    clearHandlers();
+    TAG_DEFAULT.handlerCount = 0;
+
+    int count = 0;
+    const Tag* tags[] = { &TAG_DEFAULT };
+
+    REQUIRE(registerHandler(LogLevel::WARN, countingHandler, &count, tags, 1));
+
+    log(LogLevel::DEBUG, &TAG_DEFAULT, "low");
+    REQUIRE(count == 0);
+
+    log(LogLevel::WARN, &TAG_DEFAULT, "equal");
+    log(LogLevel::ERR,  &TAG_DEFAULT, "high");
+    REQUIRE(count == 2);
+}
+
+TEST_CASE("formatted logf works correctly", "[Logger][Format]") {
+    clearHandlers();
+    TAG_DEFAULT.handlerCount = 0;
+
+    std::ostringstream out;
+    auto fmtHandler = [](const LogMessage& msg, void* ctx) {
+        auto& os = *static_cast<std::ostringstream*>(ctx);
+        os << msg.message;
+    };
+    const Tag* tags[] = { &TAG_DEFAULT };
+    REQUIRE(registerHandler(LogLevel::INFO, fmtHandler, &out, tags, 1));
+
+    logf(LogLevel::INFO, &TAG_DEFAULT, "%d + %d = %d", 2, 3, 5);
+    REQUIRE(out.str() == "2 + 3 = 5");
 }

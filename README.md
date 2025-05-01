@@ -1,206 +1,110 @@
 # LogAnywhere
 
-**LogAnywhere** is a lightweight, backend-agnostic logging library for embedded C++ development. It focuses on minimalism, clarity, and total decoupling from output protocols. The result is a flexible log router that works across microcontrollers, Linux targets, and constrained environments. 
+*A zero‑allocation, header‑only log router for embedded and cross‑platform C++.*  
+Route any log line to any number of **handlers** (serial, file, MQTT, etc.) by **level** and **tag**—without dragging in streams, RTTI or the STL.
 
 ---
-
-## Why LogAnywhere Exists
-
-LogAnywhere was born out of the needs of a growing ESP32 and Pi fleet running complex mesh and mesh-of-mesh networks - particularly in CI/CD environments. Traditional logging frameworks quickly proved inadequate when simultaneous outputs—to a file, serial console, MQTT broker, or custom sink—became essential. After repeatedly reimplementing the same handlers by hand, I created LogAnywhere as a single, reusable core. It cleanly decouples routing from output, enabling you to plug in any combination of handlers across your entire fleet.
-
-In embedded systems, logging is far more than development-time verbosity—it's often part of the device's primary functionality. LogAnywhere is designed from the ground up to support multi-destination logging as a fundamental feature, not an afterthought.
-
-You choose the destinations. LogAnywhere routes each entry based on severity, tags, and optional filters. It remains completely transport and format agnostic, giving you full control over how and where your logs are delivered.
-
----
-
-## Key Features
-
-- Embedded design focused - Extremely low overhead
-	- Header-only design, no runtime dependencies
-- Log routing by level and tag
-- Pluggable handlers via function pointers and context
-- Optional per-handler tag filters
-- Microcontroller-safe 
-- Provides synchronous logging today; asynchronous mode is on the roadmap.
-- No dynamic allocations (e.g. no STL containers), keeping RAM footprint and CPU overhead extremely low
-
----
-
-## Index
-
-This project includes a vault-style documentation layout.
-
-- README
-- Roadmap
-- Examples 
-- Documentation -- Doxyfile docs exist, however more Documentation is in the works. 
-
----
-
-## Project Structure
-
-```
-include/
-├── Logger.h         # Central logger class and handler registration
-├── HandlerEntry.h   # Metadata for registered outputs
-├── LogLevel.h       # Log severity enum 
-├── LogMessage.h     # Message struct (level, tag, text, timestamp)
-├── LogAnywhere.h    # Umbrella include
-tests/
-├── test Files
-
-build/               # CMake build output
-README/              # Obsidian vault for structured docs
-```
-
----
-
-## Example: Serial + File Logger
+## Highlights  
+- **Header‑only, C++17** – drop `include/` in and go.  
+- **Static RAM only** – no `new`, no containers, deterministic footprint.  
+- **Pluggable handlers** – register a callback + context pointer.  
+- **Tag / level filters** – subscribe handlers to the signals they care about.  
+- **Micro‑tuned limits** – change two macros to trade RAM for capacity.  
 
 ```cpp
-Logger logger;
-
-auto SerialHandler = [](const LogMessage& msg, void* ctx) {
-    auto* out = static_cast<std::ostream*>(ctx);
-    *out << "[" << toString(msg.level) << "] " << msg.tag << ": " << msg.message << "\n";
-};
-
-logger.registerHandler(LogLevel::INFO, SerialHandler, &std::cout);
-logger.log(LogLevel::INFO, "SYSTEM", "Startup complete.");
-```
-
-See more examples in the docs.
-
----
-
----
-
-## Using the Library
-
-**LogAnywhere** is a single-header, dependency-free library.
-
-Just include the umbrella header in your project:
-
-```cpp
+// 6‑handler / 6‑tag build (tiny MCU)
+#define LOGANYWHERE_MAX_HANDLERS   6
+#define MAX_TAG_SUBSCRIPTIONS      6
 #include "LogAnywhere.h"
 ```
 
-This gives you access to:
-- `Logger`
-- `LogLevel`
-- `LogMessage`
-- Handler/filter registration utilities
-
-You can drop the entire `include/` folder into your project if desired.
-
-Project will eventually be posted to platformio's library.
 ---
 
-## Running Tests (Optional)
+## Configuration: Tuning RAM vs. Speed
+Adjust the two macros based on your device’s RAM:
 
-Test binaries are provided via CMake + Catch2.
-
-These are not needed, but if you desired to see my testing, here are the steps to build:
-
-### 1. Configure
-
-```bash
-cmake -S . -B build -G "MinGW Makefiles"
+```cpp
+// LogAnywhereConfig.h
+#pragma once
+#if defined(ESP32) || defined(CONFIG_IDF_TARGET_ESP32)
+// ESP32: ample RAM → larger capacity
+  #define LOGANYWHERE_MAX_HANDLERS   16
+  #define MAX_TAG_SUBSCRIPTIONS      12
+#elif defined(__AVR__) || defined(SMALL_DEVICE)
+// Tiny MCU (AVR) → minimal footprint
+  #define LOGANYWHERE_MAX_HANDLERS    4
+  #define MAX_TAG_SUBSCRIPTIONS       4
+#else
+// Default desktop or mid-range MCU
+  #define LOGANYWHERE_MAX_HANDLERS    8
+  #define MAX_TAG_SUBSCRIPTIONS       6
+#endif
 ```
 
-### 2. Build All Tests
+Include this config header **before** any LogAnywhere includes, or define via your build system (`-D` flags).
 
-```bash
-cmake --build build
+---
+
+---
+
+
+### Why LogAnywhere?
+LogAnywhere was forged while scaling an ESP32 / Raspberry Pi mesh fleet through CI/CD. Existing log libs collapsed once each node had to stream **simultaneously** to serial, file, MQTT and custom sinks. Re‑implementing handlers every time was painful, so LogAnywhere became the single, header‑only core that *separates routing from output.*
+
+On small devices logs are often mission‑critical telemetry, not just debug noise. Multi‑destination routing is therefore a first‑class feature: pick your sinks, set level/tag filters, and LogAnywhere delivers—completely transport‑agnostic.
+
+## Quick Start
+```cpp
+#include "LogAnywhere.h"
+using namespace LogAnywhere;
+
+static Tag TAG_SYS("SYS");
+
+auto serialOut = [](const LogMessage& m, void*) {
+    printf("[%s] %s: %s\n", toString(m.level), m.tag, m.message);
+};
+
+HandlerManager mgr;
+Logger         log(&mgr);
+const Tag* t[] = { &TAG_SYS };
+
+mgr.registerHandlerForTags(LogLevel::INFO, serialOut, nullptr, t, 1);
+log.log(LogLevel::INFO, &TAG_SYS, "Boot OK");
 ```
 
-### 3. Run All Tests
-
-```bash
-for t in ./build/test_*; do echo "Running $t"; "$t"; done
+---
+## Folder Layout
+```
+include/   headers (add to your include path)
+tests/     Catch2 unit tests
 ```
 
 ---
-
-## Vault Documentation
-
-The `README/` folder includes developer notes and guides in Obsidian-compatible markdown.
-
-### Option 1: Obsidian
-Simply open the LogAnwhere folder in Obsidian.
----
-
-## Project Philosophy
-
-- No assumptions: you control every handler
-- No globals: instantiate loggers as needed
-- No STL dependency unless you use it in your handlers
-- No need to build or install — just include and use
-- Logging is a core functionality of embedded, that's their whole goal - this helps centralize that to do what you need.
-
+## Building & Tests (optional)
+```bash
+cmake -S . -B build
+cmake --build build && ctest --test-dir build
+```
 
 ---
+## Roadmap (abridged)
 
-## Roadmap
-
-| Stage             | Description                                    | Status         |
-|------------------|------------------------------------------------|----------------|
-| Core logger       | Log routing by level and handler registration  | ✅ Complete     |
-| Tag filters       | Per-handler tag filtering                      | ✅ Complete     |
-| Timestamp hooks   | Custom provider support                        | ✅ Complete     |
-| Async support     | Buffer or deferred logging                     | Planned        |
-| Built-in backends | Optional serial/MQTT handlers                  | Planned        |
-| Log ordering      | Sequential fallback when time is unavailable   | ✅ Complete     |
-| Tests             | Full Catch2 coverage                           | In Progress     |
-| Docsify Vault     | Markdown documentation via local viewer        | ✅ Available    |
+| Feature                             | Status |
+|:-----------------------------------:|:------:|
+| Async / ring-buffer backend         | 🔲     |
+| Tuning RAM vs. Speed                | 🔲     |
+| Reference handlers (Serial, MQTT)   | 🔲     |
+| Dynamic log-level switching         | 🔲     |
+| Structured logging (JSON/CBOR)      | 🔲     |
+| Async / ring‑buffer backend | 🔲 |
+| Reference handlers (Serial, MQTT) | 🔲 |
 
 ---
-
-## Project Philosophy
-
-- Output is never assumed — it must be explicitly registered
-- Logging destinations are function pointers with optional tag filters
-- No hardcoded global log state, files, or protocols
-- Focused on embedded, bare-metal, and cross-platform compatibility
+## Contributing
+1. Keep it header‑only, zero‑allocation.  
+2. Add *Catch2* tests for every new feature.  
+3. Target the **`dev`** branch in a PR.
 
 ---
+© 2025  LogAnywhere – MIT License
 
-## Vault Documentation
-
-If you cloned the repo with `README/` or `obsidian/`:
-
-### Option 1: Open in Obsidian
-
-- Download Obsidian
-- Choose "Open folder as vault"
-- Select `README/`
-
-### Option 2: Open `index.html`
-
-- Double-click `README/index.html` for a browser-based viewer (uses Docsify)
-- Works offline without build steps
-
----
-
-## Contribution & Intent
-
-LogAnywhere is primarily designed, implemented, and maintained by a single developer to ensure a focused, lightweight core. That said, contributions that meet the project’s quality and style standards are welcome. If you’d like to contribute:
-
-**Follow the existing style**
- - Header-only, no dynamic allocations or STL containers
- - C++17-compatible, no additional dependencies
- - Avoid dynamic or hash-based containers
- - Fixed-size arrays or simple loops to minimize code size and RAM use.
-
-**Write Tests**
-- Include unit tests for any new functionality using the existing Catch2 setup
-- Ensure all existing tests pass
-
-**Document your changes**
-- Update the Doxygen-style comments in the headers
-- Add or adjust examples in the examples/ folder if applicable
-
-**Submit via pull request**
-- Target the `dev` branch
-- Briefly explain what you’d like to add or fix

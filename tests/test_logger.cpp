@@ -161,3 +161,17 @@ TEST_CASE("Logger invokes handler when logging to a subscribed tag",
     logger.log(LogLevel::INFO, &OTA, "Firmware update started");
     REQUIRE(lastOutput.find("Firmware update started") != std::string::npos);
 }
+
+
+TEST_CASE("toString() maps all LogLevel values correctly", "[LogLevel]") {
+    REQUIRE(std::string(toString(LogLevel::TRACE)) == "TRACE");
+    REQUIRE(std::string(toString(LogLevel::DEBUG)) == "DEBUG");
+    REQUIRE(std::string(toString(LogLevel::INFO))  == "INFO");
+    REQUIRE(std::string(toString(LogLevel::WARN))  == "WARN");
+    REQUIRE(std::string(toString(LogLevel::ERR))   == "ERROR");
+}
+
+TEST_CASE("toString() returns UNKNOWN for out-of-range values", "[LogLevel]") {
+    auto invalid = static_cast<LogLevel>(0xFF);
+    REQUIRE(std::string(toString(invalid)) == "UNKNOWN");
+}
