@@ -20,7 +20,6 @@
 #include <cstdint>
 #include <cstddef>
 #include <cstring>
-#include <cstring> 
 
 #ifndef LOGANYWHERE_MAX_HANDLERS
 #define LOGANYWHERE_MAX_HANDLERS 6
