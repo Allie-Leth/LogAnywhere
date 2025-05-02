@@ -19,8 +19,8 @@
 #include "LogLevel.h"
 #include <cstdint>
 #include <cstddef>
-#include <cstring> // for std::strcmp
-#include <cstring> // for std::memset
+#include <cstring>
+#include <cstring> 
 
 #ifndef LOGANYWHERE_MAX_HANDLERS
 #define LOGANYWHERE_MAX_HANDLERS 6
@@ -62,7 +62,7 @@ namespace LogAnywhere
         }
 
         /**
-         * @brief Lists all registered handlers (enabled or disabled).
+         * @brief Lists all registered handlers.
          *
          * @param outCount Populated with the number of handlers in the array.
          * @return Pointer to the internal HandlerEntry array.
@@ -95,11 +95,11 @@ namespace LogAnywhere
                                     const char *name = nullptr);
 
         /**
-         * @brief Deletes (fully removes) a handler by its unique ID.
+         * @brief Deletes a handler by its unique ID.
          *
          * This expensive operation:
          *  1) Prunes the handler from every Tag::handlers[] it subscribed to.
-         *  2) Removes it from the internal registry (compact array).
+         *  2) Removes it from the internal registry.
          *
          * @param id Unique ID of the handler to remove.
          * @return true if found and deleted; false otherwise.
@@ -107,7 +107,7 @@ namespace LogAnywhere
         bool deleteHandlerByID(uint16_t id);
 
         /**
-         * @brief Deletes (fully removes) a handler by its name.
+         * @brief Deletes a handler by its name.
          *
          * Same expensive semantics as deleteHandlerByID().
          *
@@ -123,7 +123,7 @@ namespace LogAnywhere
         uint16_t nextHandlerId;                                          ///< Next ID to assign
 
         // --------------------------------------------------------------------
-        // Single‐purpose helper methods (declared here, defined below)
+        // Single‐purpose helper methods
         // --------------------------------------------------------------------
 
         /**
@@ -330,7 +330,7 @@ namespace LogAnywhere
     }
 
     /**
-     * @brief Registers a handler for a list of Tag* subscriptions (inlined).
+     * @brief Registers a handler for a list of Tag* subscriptions.
      *
      * Convenience wrapper that checks capacity, creates the entry,
      * and subscribes it to the provided tags.
@@ -358,7 +358,7 @@ namespace LogAnywhere
     }
 
     /**
-     * @brief Deletes (removes) a handler by its unique ID (inlined).
+     * @brief Deletes a handler by its unique ID.
      *
      * Finds the entry by ID, unsubscribes it from all Tags, and compacts
      * the internal handler array.
@@ -377,7 +377,7 @@ namespace LogAnywhere
     }
 
     /**
-     * @brief Deletes (removes) a handler by its name (inlined).
+     * @brief Deletes a handler by its name 
      *
      * Finds the entry by name, unsubscribes it from all Tags, and compacts
      * the internal handler array.
