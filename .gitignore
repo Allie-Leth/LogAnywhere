@@ -43,6 +43,10 @@ Desktop.ini
 *.~*
 *.orig
 
+# === Debugging ===
+main.cpp
+demo.exe
+
 # === Ignore firmware blobs if present ===
 *.bin
 *.uf2
