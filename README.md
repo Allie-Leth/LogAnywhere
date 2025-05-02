@@ -72,12 +72,6 @@ mgr.registerHandlerForTags(LogLevel::INFO, serialOut, nullptr, t, 1);
 log.log(LogLevel::INFO, &TAG_SYS, "Boot OK");
 ```
 
----
-## Folder Layout
-```
-include/   headers (add to your include path)
-tests/     Catch2 unit tests
-```
 
 ---
 ## Building & Tests (optional)
