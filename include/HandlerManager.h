@@ -55,11 +55,36 @@ namespace LogAnywhere
          */
         void clearHandlers()
         {
-            std::memset(handlers, 0, sizeof(handlers));
+            // Use a temp copy so we can unsubscribe safely before the memory is wiped
+            for (size_t i = 0; i < handlerCount; ++i)
+            {
+                HandlerEntry *e = &handlers[i];
+                // Make a local copy of the tag list to safely unsubscribe
+                const Tag *tags[MAX_TAG_SUBSCRIPTIONS];
+                std::memcpy(tags, e->tagList, sizeof(tags));
+                size_t tagCount = e->tagCount;
+
+                for (size_t t = 0; t < tagCount; ++t)
+                {
+                    Tag *tag = const_cast<Tag *>(tags[t]);
+                    size_t wr = 0;
+                    for (size_t rd = 0; rd < tag->handlerCount; ++rd)
+                    {
+                        if (tag->handlers[rd] != e)
+                            tag->handlers[wr++] = tag->handlers[rd];
+                    }
+                    tag->handlerCount = wr;
+                }
+            }
+
+            // Now safe to wipe handler state
+            for (size_t i = 0; i < MAX_HANDLERS; ++i)
+            {
+                handlers[i] = HandlerEntry{}; // value‑init each slot
+            }
             handlerCount = 0;
             nextHandlerId = 1;
         }
-
         /**
          * @brief Lists all registered handlers.
          *
@@ -376,7 +401,7 @@ namespace LogAnywhere
     }
 
     /**
-     * @brief Deletes a handler by its name 
+     * @brief Deletes a handler by its name
      *
      * Finds the entry by name, unsubscribes it from all Tags, and compacts
      * the internal handler array.
