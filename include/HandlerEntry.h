@@ -16,7 +16,7 @@
 
 /// Maximum number of Tag* subscriptions per handler; can be overridden before include.
 #ifndef MAX_TAG_SUBSCRIPTIONS
-#define MAX_TAG_SUBSCRIPTIONS 512
+#define MAX_TAG_SUBSCRIPTIONS 20
 #endif
 
 namespace LogAnywhere
