@@ -19,22 +19,27 @@ Compatibility targets:
 ---
 # Roadmap
 
-## v1.0 (Complete)
+## v1.0 (Released)
 - ✅ Core routing by level + tag
 
 ---
-## v1.1 (In Progress)
-- ✅ Tag-based dispatching
-- 🔲 Tuning RAM vs. Speed configurations
+## v1.1 (Released)
+- ✅ Tag-based dispatching 
+    - This required a full code refactor so other features were pushed back. This laid the groundwork for my more dynamic handling - 
 
 ---
-## v1.2 (Next Up)
-- 🔲 Async / ring-buffer backend
-- 🔲 Built-in reference handlers (Serial, MQTT)
-- 🔲 Structured-log output (JSON / CBOR layer)
+## v1.2 - Quality of Life Improvements (In-progress)
+- 🔲 Boilerplate refinement and QoL improvements
+    - Currently using this library requires more boilerplate than I find acceptable, registering should be simpler. 
 
+---
+## v1.3 - Memory & Speed refinements (In progress)
+- 🔲Currently LogAnwhere requires trade offs of RAM usage VS speed. This is suboptimal and does not fit the design goals for embedded systems. This will result in a refactor of how it handles clients and tags on the backend. 
+- 🔲 Async / ring-buffer backend
 ---
 ## v2.0+ (Future / Backlog)
+- 🔲 Built-in reference handlers (Serial, MQTT)
+- 🔲 Structured log handling
 - 🔲 Dynamic log-level switching
 - 🔲 Thread-safe dispatch & compile-time stripping
 - 🔲 Extended metadata injection (source file, function)
